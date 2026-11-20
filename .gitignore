@@ -1,0 +1,21 @@
+# 依赖与构建产物
+node_modules/
+dist/
+target/
+app/src-tauri/target/
+app/src-tauri/gen/
+
+# 本机/内部材料，不入公开仓库
+artifacts/
+bench/
+*.dmg
+*.log
+.DS_Store
+.env
+.env.*
+
+# 代敲运行时数据只应存在于 ~/.daiqiao，不该被提交
+**/audit.jsonl
+**/hosts.json
+**/known_hosts
+**/keys.json

@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>代敲</title>
+  </head>
+  <body>
+    <!-- 图标精灵：Lucide（ISC），全部内联，不走网络 -->
+    <svg id="icons" aria-hidden="true" style="display: none">
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></symbol>
+      <symbol id="i-server" viewBox="0 0 24 24"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></symbol>
+      <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m7 11 2-2-2-2"/><path d="M11 13h4"/><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/></symbol>
+      <symbol id="i-folder" viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></symbol>
+      <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+      <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+      <symbol id="i-ellipsis" viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></symbol>
+      <symbol id="i-key" viewBox="0 0 24 24"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z"/><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"/></symbol>
+      <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+      <symbol id="i-copy" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+      <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></symbol>
+      <symbol id="i-plug" viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 7V2"/><path d="M15 7V2"/><path d="M6 13V8h12v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4Z"/></symbol>
+      <symbol id="i-sparkles" viewBox="0 0 24 24"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+      <symbol id="i-hand" viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2"/><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></symbol>
+      <symbol id="i-command" viewBox="0 0 24 24"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></symbol>
+      <symbol id="i-columns" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 3v18"/></symbol>
+      <symbol id="i-rows" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 12h18"/></symbol>
+      <symbol id="i-hard-drive" viewBox="0 0 24 24"><line x1="22" x2="2" y1="12" y2="12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/><line x1="6" x2="6.01" y1="16" y2="16"/><line x1="10" x2="10.01" y1="16" y2="16"/></symbol>
+      <symbol id="i-circle-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></symbol>
+      <symbol id="i-clipboard" viewBox="0 0 24 24"><rect width="8" height="4" x="8" y="2" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="i-circle-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></symbol>
+    </svg>
+
+    <div id="app">
+      <!-- 侧栏：通顶，红绿灯内嵌在它左上 -->
+      <aside id="sidebar">
+        <div id="side-top" data-tauri-drag-region>
+          <div id="side-views">
+            <button data-view="hosts" class="on">主机</button>
+            <button data-view="sftp">SFTP</button>
+          </div>
+          <button id="host-new" class="ico" title="新建主机">
+            <svg class="i"><use href="#i-plus" /></svg>
+          </button>
+        </div>
+
+        <div id="side-search-wrap">
+          <svg class="i search-i"><use href="#i-search" /></svg>
+          <input
+            id="side-search"
+            type="text"
+            placeholder="找主机，或输 user@host"
+            spellcheck="false"
+            autocomplete="off"
+          />
+          <kbd class="kbd">⌘K</kbd>
+        </div>
+
+        <div id="side-body"></div>
+
+        <div id="side-foot">
+          <button id="host-import" class="txt">
+            <svg class="i"><use href="#i-download" /></svg>
+            从 ~/.ssh/config 导入
+          </button>
+          <button id="app-settings" class="ico" title="设置">
+            <svg class="i"><use href="#i-settings" /></svg>
+          </button>
+        </div>
+      </aside>
+
+      <!-- 主区：一条标签栏 + 终端 + 状态条 -->
+      <div id="main">
+        <header id="tabbar" data-tauri-drag-region>
+          <!-- #tabs 铺满整条栏，裸 drag-region 只认直接命中的元素，
+               所以这里也要带上，否则标签右边的空白拖不动窗口 -->
+          <div id="tabs" data-tauri-drag-region></div>
+          <button id="mcp-pill" title="复制 MCP 地址">
+            <span class="dot"></span>
+            <span id="mcp-text">MCP</span>
+          </button>
+        </header>
+        <main id="stage"></main>
+        <footer id="statusbar">
+          <div id="status-left"></div>
+          <div id="status-right"></div>
+        </footer>
+      </div>
+    </div>
+
+    <!-- 主机检查器（右侧面板） -->
+    <div id="drawer" hidden>
+      <div class="drawer-head">
+        <svg class="i"><use href="#i-server" /></svg>
+        <span id="drawer-title">新建主机</span>
+        <div style="flex: 1"></div>
+        <button id="drawer-close" class="ico" title="关闭">
+          <svg class="i"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <label class="fld">
+          <span>名称</span>
+          <input id="f-name" placeholder="生产网关" spellcheck="false" />
+        </label>
+        <div class="fld-row">
+          <label class="fld" style="flex: 2 1 0">
+            <span>地址</span>
+            <input id="f-host" placeholder="10.0.1.7 或 example.com" spellcheck="false" />
+          </label>
+          <label class="fld" style="flex: 0 0 74px">
+            <span>端口</span>
+            <input id="f-port" value="22" inputmode="numeric" />
+          </label>
+        </div>
+        <label class="fld">
+          <span>用户</span>
+          <input id="f-user" placeholder="root" spellcheck="false" />
+        </label>
+        <div class="fld">
+          <span>认证方式</span>
+          <div id="f-auth-seg" class="seg">
+            <button data-auth="key" class="on">密钥</button>
+            <button data-auth="password">密码</button>
+            <button data-auth="agent">ssh-agent</button>
+          </div>
+          <!-- 密码 / agent 的说明各自跟着自己的行走，不再放一条过时警告 -->
+          <select id="f-auth" hidden>
+            <option value="key">密钥</option>
+            <option value="password">密码</option>
+            <option value="agent">ssh-agent</option>
+          </select>
+        </div>
+        <!-- 密码认证：存进 macOS 钥匙串，不走 hosts.json、不进日志 -->
+        <div class="fld" id="f-pass-row" hidden>
+          <span>密码</span>
+          <div class="pass-box">
+            <input
+              id="f-pass"
+              type="password"
+              placeholder="存进钥匙串"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <button id="f-pass-save" class="key-swap" title="存进钥匙串">存</button>
+            <button id="f-pass-clear" class="key-swap danger" title="清除已存密码" hidden>清除</button>
+          </div>
+          <div class="pass-status" id="f-pass-status"></div>
+        </div>
+        <!-- ssh-agent 认证：没有要填的东西，显示 agent 现在的状态 -->
+        <div class="fld" id="f-agent-row" hidden>
+          <span>ssh-agent</span>
+          <div class="agent-status" id="f-agent-status">正在看 agent…</div>
+        </div>
+        <div class="fld" id="f-key-row">
+          <span>私钥</span>
+          <!-- 选好密钥之后显示这张卡 -->
+          <div id="f-key-card" class="key-card" hidden>
+            <div class="key-ico"><svg class="i"><use href="#i-key" /></svg></div>
+            <div class="key-meta">
+              <div class="key-name">
+                <span id="f-key-name"></span>
+                <span id="f-key-badge" class="key-badge"></span>
+              </div>
+              <div class="key-fp" id="f-key-fp"></div>
+            </div>
+            <button id="f-key-swap" class="key-swap">更换</button>
+          </div>
+          <!-- 还没选：四条入口，也能把文件拖进来 -->
+          <div id="f-key-empty" class="key-empty">
+            <div class="key-empty-hd">
+              <svg class="i"><use href="#i-key" /></svg>
+              还没选密钥
+            </div>
+            <div class="key-ways">
+              <button id="f-key-pick" class="key-way primary">
+                <svg class="i"><use href="#i-search" /></svg>
+                从 ~/.ssh 选
+              </button>
+              <button id="f-key-file" class="key-way">
+                <svg class="i"><use href="#i-folder" /></svg>
+                选择文件…
+              </button>
+              <button id="f-key-paste" class="key-way">
+                <svg class="i"><use href="#i-clipboard" /></svg>
+                粘贴密钥
+              </button>
+              <button id="f-key-gen" class="key-way">
+                <svg class="i"><use href="#i-sparkles" /></svg>
+                新建一对
+              </button>
+            </div>
+            <p class="key-empty-ft">也可以把密钥文件直接拖到这里。</p>
+          </div>
+          <!-- 有口令 / 权限太松时挂在卡下面 -->
+          <div id="f-key-alert" class="key-alert" hidden>
+            <svg class="i"><use href="#i-lock" /></svg>
+            <span id="f-key-alert-text"></span>
+            <button id="f-key-alert-act" hidden></button>
+          </div>
+          <div id="f-key-used" class="key-used" hidden></div>
+        </div>
+        <label class="fld">
+          <span>分组</span>
+          <input id="f-group" placeholder="生产环境 / 测试环境" spellcheck="false" />
+        </label>
+        <label class="fld">
+          <span>备注</span>
+          <input id="f-note" placeholder="发布机，只走 deploy 脚本" spellcheck="false" />
+        </label>
+        <div class="test-row">
+          <button id="f-test" class="test-btn">
+            <svg class="i"><use href="#i-plug" /></svg>
+            测试连接
+          </button>
+          <span id="f-test-out" class="test-out"></span>
+        </div>
+        <p class="note">
+          <svg class="i"><use href="#i-check" /></svg>
+          私钥和密码都只存在本机（密钥文件 + macOS 钥匙串），AI 只拿得到名字和「存没存」，看不到内容。
+        </p>
+      </div>
+      <div class="drawer-foot">
+        <button id="drawer-delete" class="danger" hidden>删除</button>
+        <div style="flex: 1"></div>
+        <button id="drawer-save" class="primary">保存</button>
+      </div>
+    </div>
+
+    <!-- 从 ~/.ssh/config 导入 -->
+    <div id="import-panel" hidden>
+      <div class="drawer-head">
+        <svg class="i"><use href="#i-download" /></svg>
+        <span>从 ~/.ssh/config 导入</span>
+        <div style="flex: 1"></div>
+        <button id="import-close" class="ico" title="关闭">
+          <svg class="i"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <div class="drawer-body" id="import-list"></div>
+      <div class="drawer-foot">
+        <div style="flex: 1"></div>
+        <button id="import-do" class="primary">导入</button>
+      </div>
+    </div>
+
+    <!-- 外观：字号 / 字体 / 配色 / 行高 / 光标。改完立刻生效 -->
+    <div id="look-panel" hidden>
+      <div class="drawer-head">
+        <svg class="i"><use href="#i-settings" /></svg>
+        <span>外观</span>
+        <div style="flex: 1"></div>
+        <button id="look-close" class="ico" title="关闭">
+          <svg class="i"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <div class="fld">
+          <label for="look-language">语言</label>
+          <select id="look-language">
+            <option value="zh-CN">简体中文</option>
+            <option value="zh-TW">繁體中文</option>
+            <option value="en">English</option>
+            <option value="ja">日本語</option>
+            <option value="ko">한국어</option>
+            <option value="de">Deutsch</option>
+            <option value="fr">Français</option>
+            <option value="es">Español</option>
+          </select>
+        </div>
+
+        <div class="fld">
+          <label for="look-font">字号</label>
+          <div class="look-row">
+            <input id="look-font" type="range" min="9" max="28" step="1" />
+            <output id="look-font-val" class="look-val">13</output>
+          </div>
+        </div>
+
+        <div class="fld">
+          <label for="look-family">等宽字体</label>
+          <input id="look-family" placeholder="留空 = SF Mono / Menlo / PingFang SC" />
+          <span class="look-hint">填系统里装了的字体族名，留空用内置回退链</span>
+        </div>
+
+        <div class="fld">
+          <label>配色</label>
+          <div id="look-themes" class="look-themes"></div>
+        </div>
+
+        <div class="fld">
+          <label for="look-lh">行高</label>
+          <div class="look-row">
+            <input id="look-lh" type="range" min="1" max="2" step="0.02" />
+            <output id="look-lh-val" class="look-val">1.32</output>
+          </div>
+        </div>
+
+        <div class="fld">
+          <label>光标</label>
+          <div id="look-cursor" class="seg">
+            <button data-cursor="block">方块</button>
+            <button data-cursor="bar">竖线</button>
+            <button data-cursor="underline">下划线</button>
+          </div>
+        </div>
+      </div>
+      <div class="drawer-foot">
+        <span class="ai-foot-note">改完立刻生效，AI 也能用 appearance_set 改。</span>
+      </div>
+    </div>
+
+    <!-- 连接 AI 客户端：只给地址和片段，不动任何客户端的配置文件 -->
+    <div id="ai-panel" hidden>
+      <div class="drawer-head">
+        <svg class="i"><use href="#i-sparkles" /></svg>
+        <span>连接 AI 客户端</span>
+        <div style="flex: 1"></div>
+        <button id="ai-close" class="ico" title="关闭">
+          <svg class="i"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <div class="ai-addr">
+          <div class="ai-addr-top">
+            <span id="ai-state" class="ai-state">检测中…</span>
+            <span id="ai-tools" class="ai-tools"></span>
+          </div>
+          <code id="ai-url">http://127.0.0.1:7391/mcp</code>
+          <button id="ai-copy-url" class="ai-copy">
+            <svg class="i"><use href="#i-copy" /></svg>
+            复制地址
+          </button>
+        </div>
+
+        <p class="note">
+          <svg class="i"><use href="#i-check" /></svg>
+          代敲自带 MCP server，跟终端同一个进程。接上的客户端看到的就是这块屏，你随时能接手。
+        </p>
+
+        <div class="ai-client" data-client="claude">
+          <div class="ai-client-top">
+            <span class="ai-client-name">Claude Code</span>
+            <button class="ai-copy sm" data-copy="claude">
+              <svg class="i"><use href="#i-copy" /></svg>
+              复制
+            </button>
+          </div>
+          <code class="ai-snip" data-snip="claude"></code>
+          <span class="ai-hint">在终端里跑一次就行</span>
+        </div>
+
+        <div class="ai-client" data-client="codex">
+          <div class="ai-client-top">
+            <span class="ai-client-name">Codex CLI</span>
+            <button class="ai-copy sm" data-copy="codex">
+              <svg class="i"><use href="#i-copy" /></svg>
+              复制
+            </button>
+          </div>
+          <code class="ai-snip" data-snip="codex"></code>
+          <span class="ai-hint">加到 ~/.codex/config.toml</span>
+        </div>
+
+        <div class="ai-client" data-client="cursor">
+          <div class="ai-client-top">
+            <span class="ai-client-name">Cursor</span>
+            <button class="ai-copy sm" data-copy="cursor">
+              <svg class="i"><use href="#i-copy" /></svg>
+              复制
+            </button>
+          </div>
+          <code class="ai-snip" data-snip="cursor"></code>
+          <span class="ai-hint">加到 ~/.cursor/mcp.json</span>
+        </div>
+
+        <div class="ai-sep">
+          <span>不支持 HTTP 的客户端走 stdio</span>
+        </div>
+
+        <div class="ai-client" data-client="stdio">
+          <div class="ai-client-top">
+            <span class="ai-client-name">stdio · 命令行</span>
+            <button class="ai-copy sm" data-copy="stdio">
+              <svg class="i"><use href="#i-copy" /></svg>
+              复制
+            </button>
+          </div>
+          <code class="ai-snip" data-snip="stdio"></code>
+          <span class="ai-hint">代敲要开着 —— 工具操作的就是这个窗口里的会话</span>
+        </div>
+
+        <div class="ai-client" data-client="stdioJson">
+          <div class="ai-client-top">
+            <span class="ai-client-name">stdio · JSON 配置</span>
+            <button class="ai-copy sm" data-copy="stdioJson">
+              <svg class="i"><use href="#i-copy" /></svg>
+              复制
+            </button>
+          </div>
+          <code class="ai-snip" data-snip="stdioJson"></code>
+          <span class="ai-hint">填进客户端的 mcpServers</span>
+        </div>
+      </div>
+      <div class="drawer-foot">
+        <span class="ai-foot-note">多个客户端可以同时连，互不影响。</span>
+      </div>
+    </div>
+
+    <!-- 密钥库：选择 / 粘贴导入 / 新建 三页 -->
+    <div id="keyvault" hidden>
+      <div class="kv-box">
+        <div class="kv-head">
+          <svg class="i"><use href="#i-key" /></svg>
+          <span class="kv-title">密钥库</span>
+          <div id="kv-tabs" class="kv-tabs">
+            <button data-tab="pick" class="on">
+              <svg class="i"><use href="#i-key" /></svg>选择
+            </button>
+            <button data-tab="paste">
+              <svg class="i"><use href="#i-clipboard" /></svg>粘贴导入
+            </button>
+            <button data-tab="gen">
+              <svg class="i"><use href="#i-sparkles" /></svg>新建
+            </button>
+          </div>
+          <button id="kv-close" class="ico" title="关闭">
+            <svg class="i"><use href="#i-x" /></svg>
+          </button>
+        </div>
+
+        <!-- 选择 -->
+        <div id="kv-pick" class="kv-body"></div>
+
+        <!-- 粘贴导入 -->
+        <div id="kv-paste" class="kv-pane" hidden>
+          <label class="fld">
+            <span>私钥内容</span>
+            <textarea
+              id="kv-text"
+              class="kv-ta"
+              spellcheck="false"
+              placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"
+            ></textarea>
+          </label>
+          <div id="kv-parsed" class="kv-parsed" hidden></div>
+          <div class="fld-row">
+            <label class="fld" style="flex: 1 1 0">
+              <span>起个名字</span>
+              <input id="kv-paste-name" placeholder="深圳跳板机" spellcheck="false" />
+            </label>
+          </div>
+          <p class="hintline ok">
+            <svg class="i"><use href="#i-shield" /></svg>
+            存到 ~/.daiqiao/keys/，文件权限 600、目录 700。
+          </p>
+        </div>
+
+        <!-- 新建 -->
+        <div id="kv-gen" class="kv-pane" hidden>
+          <div id="kv-gen-done" hidden>
+            <div class="kv-parsed">
+              <svg class="i"><use href="#i-circle-check" /></svg>
+              <span id="kv-gen-fp"></span>
+            </div>
+            <label class="fld" style="margin-top: 11px">
+              <span>公钥 —— 贴到服务器的 ~/.ssh/authorized_keys</span>
+              <div class="pubkey-box">
+                <code id="kv-gen-pub"></code>
+                <button id="kv-gen-copy" class="mini-copy">
+                  <svg class="i"><use href="#i-copy" /></svg>
+                  复制
+                </button>
+              </div>
+            </label>
+          </div>
+          <div id="kv-gen-form">
+            <div class="fld-row">
+              <label class="fld" style="flex: 1 1 0">
+                <span>名字</span>
+                <input id="kv-gen-name" placeholder="代敲生成" spellcheck="false" />
+              </label>
+              <div class="fld" style="flex: 0 0 132px">
+                <span>类型</span>
+                <div id="kv-gen-algo" class="seg">
+                  <button data-algo="ed25519" class="on">ed25519</button>
+                  <button data-algo="rsa">rsa</button>
+                </div>
+              </div>
+            </div>
+            <p class="hintline" style="margin-top: 11px">
+              <svg class="i"><use href="#i-shield" /></svg>
+              走系统 ssh-keygen 生成，私钥存进代敲库、权限 600，不设口令（要口令就用「粘贴导入」带上）。
+            </p>
+          </div>
+        </div>
+
+        <div class="kv-foot">
+          <span id="kv-note" class="kv-foot-note">AI 能列密钥、能指定用哪把，拿不到私钥内容。</span>
+          <button id="kv-file">
+            <svg class="i"><use href="#i-folder" /></svg>
+            选择文件…
+          </button>
+          <button id="kv-ok" class="primary">用这把</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 主机条目的右键菜单 -->
+    <!-- SFTP 资源管理器。走和 MCP sftp_* 工具同一套后端 -->
+    <div id="sftp-panel" hidden>
+      <div class="sftp-head">
+        <svg class="i"><use href="#i-folder" /></svg>
+        <span id="sftp-title">SFTP</span>
+        <div class="sftp-tools">
+          <button id="sftp-up" class="ico" title="上一级">
+            <svg class="i"><use href="#i-chevron-right" style="transform: rotate(180deg)" /></svg>
+          </button>
+          <button id="sftp-refresh" class="ico" title="刷新">
+            <svg class="i"><use href="#i-search" /></svg>
+          </button>
+          <button id="sftp-upload" class="ico" title="上传文件">
+            <svg class="i"><use href="#i-plus" /></svg>
+          </button>
+          <button id="sftp-mkdir" class="ico" title="新建文件夹">
+            <svg class="i"><use href="#i-folder" /></svg>
+          </button>
+          <button id="sftp-close" class="ico" title="关闭">
+            <svg class="i"><use href="#i-x" /></svg>
+          </button>
+        </div>
+      </div>
+      <div id="sftp-crumb" class="sftp-crumb"></div>
+      <div id="sftp-list" class="sftp-list"></div>
+      <div class="sftp-foot">
+        <span id="sftp-status"></span>
+        <span class="sftp-hint">双击进目录 · ⌘C/⌘X/⌘V · 拖到文件夹=移动 · 右键打开方式</span>
+      </div>
+    </div>
+    <div id="sftp-menu" class="ctx" hidden></div>
+
+    <div id="ctx-menu" hidden></div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

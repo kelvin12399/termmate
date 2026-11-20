@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>按键转发守卫 harness</title>
+  </head>
+  <body>
+    <!-- 一次性验证页：桩掉 Tauri IPC，加载真的 main.ts，
+         派发真实 keydown，断言「输入框里的键不会转发给终端」。
+         跑法：vite dev 起着，开 http://localhost:1420/kbd-harness.html，读 #result。 -->
+    <script>
+      window.__DQ_WRITES = [];
+      window.__DQ_HANDLERS = {};
+      window.__DQ_CALLS = [];
+      const fakeWorkspace = {
+        tabs: [
+          { id: "t1", title: "本地终端", layout: { kind: "leaf", session: "s1" } },
+          {
+            id: "t2",
+            title: "分屏标签",
+            layout: {
+              kind: "split",
+              direction: "vertical",
+              a: { kind: "leaf", session: "s2" },
+              b: { kind: "leaf", session: "s3" },
+            },
+          },
+        ],
+        active_tab: "t2",
+        focused: "s3",
+      };
+      window.__TAURI_INTERNALS__ = {
+        transformCallback: (cb) => {
+          const id = Math.random();
+          window[`_cb_${id}`] = cb;
+          return id;
+        },
+        unregisterCallback: () => {},
+        invoke: async (cmd, args) => {
+          window.__DQ_CALLS.push({ cmd, args });
+          if (cmd === "write_session") window.__DQ_WRITES.push(args);
+          if (cmd === "plugin:event|listen") {
+            window.__DQ_HANDLERS[args.event] = args.handler;
+            return Object.keys(window.__DQ_HANDLERS).length;
+          }
+          if (cmd === "get_workspace") return fakeWorkspace;
+          if (cmd === "list_hosts")
+            return [
+              {
+                id: "h1",
+                name: "测试机",
+                hostname: "127.0.0.1",
+                port: 22,
+                user: "me",
+                auth: "key",
+                key_path: "~/.ssh/id_ed25519",
+                tags: [],
+                group: "测试",
+                note: null,
+              },
+            ];
+          if (cmd === "mcp_info")
+            return { url: "http://127.0.0.1:7391/mcp", port: 7391, listening: true, tools: 20 };
+          if (cmd === "create_session") return "s1";
+          return null;
+        },
+      };
+    </script>
+    <div id="app">
+      <aside id="sidebar">
+        <div id="side-top">
+          <div id="side-views">
+            <button data-view="hosts" class="on">主机</button>
+            <button data-view="sftp">SFTP</button>
+          </div>
+          <button id="host-new"></button>
+        </div>
+        <div id="side-search-wrap"><input id="side-search" type="text" /></div>
+        <div id="side-body"></div>
+        <div id="side-foot">
+          <button id="host-import"></button><button id="app-settings"></button>
+        </div>
+      </aside>
+      <!-- SFTP 面板的骨架：没有它 sftp.ts 会 return 掉（已加 ready 守卫），
+           但 harness 要连带验证面板初始化不炸，所以把必需的几个元素摆上 -->
+      <div id="sftp-panel" hidden>
+        <span id="sftp-title"></span>
+        <button id="sftp-up"></button><button id="sftp-refresh"></button>
+        <button id="sftp-upload"></button><button id="sftp-mkdir"></button>
+        <button id="sftp-close"></button>
+        <div id="sftp-crumb"></div>
+        <div id="sftp-list"></div>
+        <span id="sftp-status"></span>
+      </div>
+      <div id="sftp-menu" class="ctx" hidden></div>
+      <div id="main">
+        <header id="tabbar">
+          <div id="tabs"></div>
+          <button id="mcp-pill"><span id="mcp-text"></span></button>
+        </header>
+        <main id="stage"></main>
+        <footer id="statusbar">
+          <div id="status-left"></div>
+          <div id="status-right"></div>
+        </footer>
+      </div>
+    </div>
+    <div id="drawer" hidden>
+      <span id="drawer-title"></span><button id="drawer-close"></button>
+      <input id="f-name" /><input id="f-host" /><input id="f-port" /><input id="f-user" />
+      <div id="f-auth-seg"><button data-auth="key" class="on">密钥</button></div>
+      <select id="f-auth">
+        <option value="key">密钥</option>
+      </select>
+      <!-- 密码认证行 -->
+      <div id="f-pass-row" hidden>
+        <input id="f-pass" type="password" />
+        <button id="f-pass-save"></button><button id="f-pass-clear" hidden></button>
+        <div id="f-pass-status"></div>
+      </div>
+      <!-- ssh-agent 行 -->
+      <div id="f-agent-row" hidden><div id="f-agent-status"></div></div>
+      <!-- 密钥区：卡片 + 空态四入口（这是密钥库改造后的真实结构） -->
+      <div id="f-key-row">
+        <div id="f-key-card" hidden>
+          <span id="f-key-name"></span><span id="f-key-badge"></span>
+          <span id="f-key-fp"></span><button id="f-key-swap"></button>
+        </div>
+        <div id="f-key-empty">
+          <button id="f-key-pick"></button><button id="f-key-file"></button>
+          <button id="f-key-paste"></button><button id="f-key-gen"></button>
+        </div>
+        <div id="f-key-alert" hidden>
+          <span id="f-key-alert-text"></span><button id="f-key-alert-act" hidden></button>
+        </div>
+        <div id="f-key-used" hidden></div>
+      </div>
+      <input id="f-group" /><input id="f-note" />
+      <button id="f-test"></button><span id="f-test-out"></span>
+      <button id="drawer-delete"></button><button id="drawer-save"></button>
+    </div>
+    <!-- 密钥库弹层骨架 -->
+    <div id="keyvault" hidden>
+      <div id="kv-tabs">
+        <button data-tab="pick" class="on"></button><button data-tab="paste"></button>
+        <button data-tab="gen"></button>
+      </div>
+      <div id="kv-pick"></div>
+      <div id="kv-paste" hidden>
+        <textarea id="kv-text"></textarea><div id="kv-parsed" hidden></div>
+        <input id="kv-paste-name" />
+      </div>
+      <div id="kv-gen" hidden>
+        <div id="kv-gen-form">
+          <input id="kv-gen-name" />
+          <div id="kv-gen-algo"><button data-algo="ed25519" class="on"></button></div>
+        </div>
+        <div id="kv-gen-done" hidden>
+          <span id="kv-gen-fp"></span><code id="kv-gen-pub"></code>
+          <button id="kv-gen-copy"></button>
+        </div>
+      </div>
+      <span id="kv-note"></span>
+      <button id="kv-file"></button><button id="kv-ok"></button><button id="kv-close"></button>
+    </div>
+    <div id="import-panel" hidden>
+      <button id="import-close"></button>
+      <div id="import-list"></div>
+      <button id="import-do"></button>
+    </div>
+    <div id="ai-panel" hidden>
+      <button id="ai-close"></button><span id="ai-state"></span><span id="ai-tools"></span>
+      <code id="ai-url"></code><button id="ai-copy-url"></button>
+      <code data-snip="claude"></code><button data-copy="claude"></button>
+      <code data-snip="codex"></code><button data-copy="codex"></button>
+      <code data-snip="cursor"></code><button data-copy="cursor"></button>
+      <code data-snip="stdio"></code><button data-copy="stdio"></button>
+      <code data-snip="stdioJson"></code><button data-copy="stdioJson"></button>
+    </div>
+    <!-- 外观面板骨架：齿轮现在开的是这个 -->
+    <div id="look-panel" hidden>
+      <button id="look-close"></button>
+      <input id="look-font" type="range" min="9" max="28" step="1" />
+      <output id="look-font-val"></output>
+      <input id="look-family" />
+      <div id="look-themes"></div>
+      <input id="look-lh" type="range" min="1" max="2" step="0.02" />
+      <output id="look-lh-val"></output>
+      <div id="look-cursor">
+        <button data-cursor="block"></button><button data-cursor="bar"></button>
+        <button data-cursor="underline"></button>
+      </div>
+    </div>
+    <div id="ctx-menu" hidden></div>
+
+    <script type="module">
+      import "/src/main.ts";
+
+      const log = [];
+      const pass = (ok, name) => log.push(`${ok ? "PASS" : "FAIL"}  ${name}`);
+      const key = (el, k, init = {}) =>
+        el.dispatchEvent(
+          new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...init })
+        );
+      const emit = (event, payload) => {
+        const id = window.__DQ_HANDLERS[event];
+        if (id === undefined) throw new Error(`没有监听 ${event}`);
+        window[`_cb_${id}`]({ event, id, payload });
+      };
+
+      window.addEventListener("load", async () => {
+        await new Promise((r) => setTimeout(r, 400));
+        // 真 app 里 workspace 只由 Rust 侧 emit 写入，这里补一发
+        emit("workspace://changed", fakeWorkspace);
+        await new Promise((r) => setTimeout(r, 120));
+
+        const search = document.getElementById("side-search");
+        const fName = document.getElementById("f-name");
+
+        // ① 焦点在终端（body）：普通字符必须转发
+        window.__DQ_WRITES = [];
+        key(document.body, "z");
+        pass(window.__DQ_WRITES.some((w) => w.data === "z"), "终端里按 z 会转发给会话");
+
+        // ② 焦点在侧栏搜索框：同一个键绝不能转发
+        window.__DQ_WRITES = [];
+        search.focus();
+        key(search, "z");
+        key(search, "q");
+        pass(window.__DQ_WRITES.length === 0, "搜索框里按键不转发给会话");
+
+        // ③ 主机检查器字段里同理
+        window.__DQ_WRITES = [];
+        fName.focus();
+        key(fName, "a");
+        pass(window.__DQ_WRITES.length === 0, "主机检查器输入框里按键不转发给会话");
+
+        // ④ ⌘K 在搜索框里也要能开面板
+        key(search, "k", { metaKey: true });
+        const pal = document.getElementById("palette");
+        pass(!!pal && !pal.hidden, "搜索框里按 ⌘K 能开命令面板");
+
+        // ⑤ 面板里按 Esc：关面板，且不漏进终端（修的就是这条）
+        window.__DQ_WRITES = [];
+        const palInput = pal.querySelector("input");
+        palInput.focus();
+        key(palInput, "Escape");
+        await new Promise((r) => setTimeout(r, 60));
+        pass(pal.hidden, "面板里按 Esc 会关掉面板");
+        pass(window.__DQ_WRITES.length === 0, "面板里按 Esc 不会漏进终端");
+
+        // ⑥ 面板关掉之后，终端按键恢复正常
+        window.__DQ_WRITES = [];
+        key(document.body, "x");
+        pass(window.__DQ_WRITES.some((w) => w.data === "x"), "关掉面板后终端按键恢复");
+
+        // ⑦ 粘贴也不该穿透输入框
+        window.__DQ_WRITES = [];
+        const dt = new DataTransfer();
+        dt.setData("text", "secret");
+        fName.focus();
+        fName.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })
+        );
+        pass(window.__DQ_WRITES.length === 0, "输入框里粘贴不会写进终端");
+
+        // ───── 以下是终审 FAIL 后新修的 8 条，逐条钉死 ─────
+
+        const drawer = document.getElementById("drawer");
+        const aiPanel = document.getElementById("ai-panel");
+        const ctx = document.getElementById("ctx-menu");
+        const hostNew = document.getElementById("host-new");
+
+        // ⑧【高危】抽屉开着、焦点在 body（点了面板里的说明文字就是这样）：
+        //    按键和回车绝不能打进 shell
+        hostNew.click();
+        await new Promise((r) => setTimeout(r, 40));
+        document.body.focus();
+        window.__DQ_WRITES = [];
+        key(document.body, "p");
+        key(document.body, "w");
+        key(document.body, "Enter");
+        pass(!drawer.hidden, "点＋能打开主机检查器");
+        pass(window.__DQ_WRITES.length === 0, "抽屉开着时按键不会打进 shell");
+
+        // ⑨ 抽屉开着时粘贴同样不能穿透
+        window.__DQ_WRITES = [];
+        const dt2 = new DataTransfer();
+        dt2.setData("text", "secret-passwd");
+        document.body.dispatchEvent(
+          new ClipboardEvent("paste", { clipboardData: dt2, bubbles: true, cancelable: true })
+        );
+        pass(window.__DQ_WRITES.length === 0, "抽屉开着时粘贴不会写进 shell");
+
+        // ⑩ Esc 一次只收一层：面板+抽屉同时开时，第一下只关面板
+        key(search, "k", { metaKey: true });
+        await new Promise((r) => setTimeout(r, 40));
+        const pal2 = document.getElementById("palette");
+        document.getElementById("f-name").value = "半路填的名字";
+        const palInput2 = pal2.querySelector("input");
+        palInput2.focus();
+        window.__DQ_WRITES = [];
+        key(palInput2, "Escape");
+        await new Promise((r) => setTimeout(r, 60));
+        pass(pal2.hidden && !drawer.hidden, "一次 Esc 只关命令面板，抽屉还在");
+        pass(
+          document.getElementById("f-name").value === "半路填的名字",
+          "抽屉里半路填的内容没被冲掉"
+        );
+        pass(window.__DQ_WRITES.length === 0, "这一下 Esc 也没漏进 shell");
+
+        // ⑪ 第二下 Esc 才关抽屉
+        window.__DQ_WRITES = [];
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+        pass(drawer.hidden, "第二下 Esc 关掉抽屉");
+        pass(window.__DQ_WRITES.length === 0, "关抽屉那一下不漏键");
+
+        // ⑫ 右键菜单：Esc 能收掉，且不漏 \x1b
+        ctx.hidden = false;
+        window.__DQ_WRITES = [];
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+        pass(ctx.hidden, "Esc 能收掉右键菜单");
+        pass(window.__DQ_WRITES.length === 0, "收右键菜单时不漏 ESC 进 shell");
+
+        // ⑬【高危】⌘W 要关掉整个标签页的所有窗格（t2 是 s2|s3 分屏）
+        window.__DQ_CALLS = [];
+        key(document.body, "w", { metaKey: true });
+        await new Promise((r) => setTimeout(r, 80));
+        const closed = window.__DQ_CALLS.filter((c) => c.cmd === "close_session_cmd").map(
+          (c) => c.args.id
+        );
+        pass(
+          closed.includes("s2") && closed.includes("s3"),
+          `⌘W 关掉分屏标签的所有窗格（实际关了 ${JSON.stringify(closed)}）`
+        );
+
+        // ⑭ AI 执行态：同一会话两条并发，先结束的那条不能抹掉另一条
+        emit("ai://exec", { run: "r1", session: "s3", command: "慢命令" });
+        emit("ai://exec", { run: "r2", session: "s3", command: "快命令" });
+        await new Promise((r) => setTimeout(r, 40));
+        emit("ai://done", { run: "r2", session: "s3", ok: true });
+        await new Promise((r) => setTimeout(r, 40));
+        const marks = document.querySelectorAll("#tabs .ai-mark").length;
+        pass(marks > 0, "一条结束后另一条的执行态还在（标签绿点仍亮）");
+        emit("ai://done", { run: "r1", session: "s3", ok: true });
+        await new Promise((r) => setTimeout(r, 40));
+        pass(
+          document.querySelectorAll("#tabs .ai-mark").length === 0,
+          "两条都结束后执行态清干净"
+        );
+
+        // ⑮ 后台标签里跑命令也要能看见（窗格没挂载时标签必须亮绿点）
+        emit("ai://exec", { run: "r3", session: "s1", command: "后台标签里的命令" });
+        await new Promise((r) => setTimeout(r, 40));
+        pass(
+          document.querySelectorAll("#tabs .ai-mark").length > 0,
+          "后台标签（窗格未挂载）里跑命令，标签上也亮绿点"
+        );
+        emit("ai://done", { run: "r3", session: "s1", ok: true });
+
+        // ⑯ AI 面板（现在从 MCP 胶囊进）：先露面再 await，期间按 Esc 不该漏键
+        document.getElementById("mcp-pill").click();
+        window.__DQ_WRITES = [];
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 60));
+        pass(window.__DQ_WRITES.length === 0, "AI 面板刚打开那几毫秒按 Esc 不漏键");
+
+        // ⑯b 齿轮开的是外观面板，同样不能漏键（这条浮层是新加的）
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+        document.getElementById("app-settings").click();
+        await new Promise((r) => setTimeout(r, 40));
+        const lookP = document.getElementById("look-panel");
+        pass(!lookP.hidden, "齿轮打开的是外观面板");
+        window.__DQ_WRITES = [];
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 60));
+        pass(window.__DQ_WRITES.length === 0, "★ 外观面板开着时按 Esc 不漏键进 shell");
+        pass(lookP.hidden, "Esc 能收掉外观面板");
+
+        // ⑰ 右侧浮层互斥：开抽屉会收掉 AI 面板
+        hostNew.click();
+        await new Promise((r) => setTimeout(r, 40));
+        pass(aiPanel.hidden && !drawer.hidden, "开抽屉会收掉 AI 面板，不叠在一起");
+        key(document.body, "Escape");
+
+        // ⑱─㉔ 中文输入法（IME）：这是中文能不能打进终端的核心
+        // 原来整个应用没有可编辑元素，macOS 输入法无处落脚、根本不开组字。
+        // 现在每个 pane 挂了一个隐形 textarea 承接它。
+        const pane1 = document.querySelector('.pane');
+        const imeEl = pane1 ? pane1.querySelector('textarea.ime') : null;
+        pass(!!imeEl, "每个窗格都挂了承接输入法的 textarea");
+
+        if (imeEl) {
+          // 它必须是真·可聚焦的：display:none / visibility:hidden 的元素
+          // macOS 输入法不认，中文开不了组字
+          const cs = getComputedStyle(imeEl);
+          pass(
+            cs.display !== "none" && cs.visibility !== "hidden",
+            "输入框没被 display:none / visibility:hidden 掉（否则输入法不认它）"
+          );
+
+          // 点窗格时焦点要落在 textarea 上，不是 canvas
+          pane1.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+          await new Promise((r) => setTimeout(r, 30));
+          pass(document.activeElement === imeEl, "点窗格后焦点落在输入框上，输入法有处可去");
+
+          // 组字期间：一个字节都不能发给 shell
+          window.__DQ_WRITES = [];
+          imeEl.dispatchEvent(new CompositionEvent("compositionstart", { bubbles: true }));
+          imeEl.value = "zhongwen";
+          imeEl.dispatchEvent(new CompositionEvent("compositionupdate", { bubbles: true, data: "zhongwen" }));
+          // 组字中输入法也会发 keydown（选词用的空格/数字/回车），绝不能转发
+          key(imeEl, " ");
+          key(imeEl, "2");
+          key(imeEl, "Enter");
+          await new Promise((r) => setTimeout(r, 40));
+          pass(
+            window.__DQ_WRITES.length === 0,
+            "★ 组字期间不漏任何字节给 shell（拼音和选词键都不该执行）"
+          );
+          pass(pane1.classList.contains("composing"), "组字时窗格进入 composing 态（拼音可见）");
+
+          // 上屏：定下来的整段中文一次写给 shell
+          window.__DQ_WRITES = [];
+          imeEl.dispatchEvent(new CompositionEvent("compositionend", { bubbles: true, data: "中文" }));
+          await new Promise((r) => setTimeout(r, 40));
+          pass(
+            window.__DQ_WRITES.length === 1 && window.__DQ_WRITES[0].data === "中文",
+            "★ 上屏时把整段中文一次写进 shell，收到: " +
+              JSON.stringify(window.__DQ_WRITES.map((w) => w.data))
+          );
+          pass(!pane1.classList.contains("composing"), "上屏后退出 composing 态");
+
+          // 非组字状态下的普通按键仍走老路（Ctrl-C 等不能坏）
+          window.__DQ_WRITES = [];
+          key(document.body, "c", { ctrlKey: true });
+          await new Promise((r) => setTimeout(r, 30));
+          pass(
+            window.__DQ_WRITES.some((w) => w.data === "\x03"),
+            "Ctrl-C 照旧能送进终端（没被 IME 改动弄坏）"
+          );
+        }
+
+        const out = document.createElement("pre");
+        out.id = "result";
+        const bad = log.filter((l) => l.startsWith("FAIL")).length;
+        out.textContent = log.join("\n") + `\n\n${bad === 0 ? "★ 全部通过" : `✗ ${bad} 条未通过`}`;
+        document.body.appendChild(out);
+      });
+    </script>
+  </body>
+</html>
