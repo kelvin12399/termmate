@@ -438,10 +438,30 @@
             "输入框没被 display:none / visibility:hidden 掉（否则输入法不认它）"
           );
 
-          // 点窗格时焦点要落在 textarea 上，不是 canvas
-          pane1.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+          // 点窗格时焦点要落在 textarea 上，不是 canvas；
+          // 同时必须 preventDefault，否则浏览器默认会把焦点抢回被点的不可聚焦元素
+          const md = new MouseEvent("mousedown", { bubbles: true, button: 0, cancelable: true });
+          pane1.dispatchEvent(md);
+          pass(md.defaultPrevented, "★ 点窗格时阻止浏览器默认抢焦点");
           await new Promise((r) => setTimeout(r, 30));
           pass(document.activeElement === imeEl, "点窗格后焦点落在输入框上，输入法有处可去");
+
+          // 点另一个分屏：焦点要跟过去，不能被 focusout 兜底抢回原来的窗格
+          const panes = [...document.querySelectorAll(".pane")];
+          const pane2 = panes[1];
+          const ime2 = pane2?.querySelector("textarea.ime") ?? null;
+          if (ime2) {
+            pane2.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, cancelable: true }));
+            await new Promise((r) => setTimeout(r, 30));
+            pass(document.activeElement === ime2, "★ 点另一个分屏后焦点跟过去，不被抢回原窗格");
+            ime2.blur();
+            await new Promise((r) => setTimeout(r, 30));
+            pass(
+              document.activeElement instanceof HTMLTextAreaElement &&
+                document.activeElement.classList.contains("ime"),
+              "★ 焦点掉到 body 后会自动收回终端输入框"
+            );
+          }
 
           // 组字期间：一个字节都不能发给 shell
           window.__DQ_WRITES = [];
@@ -508,6 +528,15 @@
         key(imeEl, "Backspace");
         await new Promise((r) => setTimeout(r, 30));
         pass(window.__DQ_WRITES.some((w) => w.data === "\x7f"), "Backspace 仍按终端控制键转发");
+
+        // 焦点在输入框里时，⌘T 依然要开新终端，不能被当成输入框里的普通键吞掉
+        window.__DQ_CALLS = [];
+        key(imeEl, "t", { metaKey: true });
+        await new Promise((r) => setTimeout(r, 30));
+        pass(
+          window.__DQ_CALLS.some((c) => c.cmd === "create_session"),
+          "★ 焦点在输入框里 ⌘T 仍开新终端"
+        );
 
         // ㉕─㉜ 文本选择与系统剪贴板
         emit("term://update", {

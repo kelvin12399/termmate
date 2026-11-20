@@ -378,8 +378,11 @@ function createPane(session: string): Pane {
 
   // 点哪个 pane，焦点就归谁（人也在操作同一份布局）
   el.addEventListener("mousedown", (e) => {
-    // 选中文本的拖选不该被打断，所以只在没按住拖动时抢焦点
     if (e.button !== 0) return;
+    // 不 preventDefault 的话，浏览器默认会把焦点移到被点的不可聚焦元素上，
+    // ime.focus() 会被这个默认动作立刻冲掉 —— 这正是中文输入法
+    // 一直落到 body、只能出英文的根因。
+    e.preventDefault();
     ime.focus({ preventScroll: true });
     if (workspace.focused !== session) {
       invoke("activate_session_cmd", { id: session }).catch(() => {});
@@ -1117,6 +1120,7 @@ async function boot(): Promise<void> {
     workspace = e.payload;
     renderWorkspace();
     updateFocusRing();
+    focusTerminalInput();
     // 标签页标题就是主机名，拿来点亮侧边栏的状态点
     sidebar.markConnected(new Set(workspace.tabs.map((t) => t.title)));
   });
@@ -1253,12 +1257,28 @@ async function boot(): Promise<void> {
   document.addEventListener("visibilitychange", () => {
     if (!document.hidden) repaintAll();
   });
-  window.addEventListener("focus", repaintAll);
+  window.addEventListener("focus", () => {
+    repaintAll();
+    focusTerminalInput();
+  });
+
+  // 浮层收掉、或者焦点被浏览器挪到 body/按钮上时，把键盘带回终端。
+  // 延迟到下一拍再判断，避免把刚要进搜索框的焦点抢回来。
+  document.addEventListener("focusout", () => {
+    setTimeout(() => {
+      const active = document.activeElement as HTMLElement | null;
+      // 已经落在某个窗格的输入框上就别动 —— 用户可能刚点了另一个分屏，
+      // 这时候抢回 workspace.focused 会把刚点中的窗格顶掉。
+      if (active && (inEditable(active) || active.classList.contains("ime"))) return;
+      if (!anyOverlayOpen()) focusTerminalInput();
+    }, 0);
+  });
 
   // 首屏：起一个标签页
   await invoke<string>("create_session", { cols: 120, rows: 34 });
   // 侧边栏拉主机列表（和 MCP 的 host_list 同一份数据）
   await sidebar.refresh();
+  focusTerminalInput();
 }
 
 // ───────────────────────── 键盘 ─────────────────────────
@@ -1352,8 +1372,30 @@ function encodeKey(e: KeyboardEvent): string | null {
 function inEditable(t: EventTarget | null): boolean {
   const el = t as HTMLElement | null;
   if (!el || !el.tagName) return false;
+  // 隐形 IME 框是终端自己的键盘入口，不算「用户正在编辑的输入框」。
+  // 否则 ⌘T/⌘W/⌘D 和粘贴会被当成输入框里的键，全局快捷键全废。
+  if (el.classList.contains("ime")) return false;
   const tag = el.tagName.toLowerCase();
   return tag === "input" || tag === "textarea" || tag === "select" || el.isContentEditable;
+}
+
+/** 把键盘焦点收回当前终端窗格的隐形输入框。
+ *  - 浮层开着时不抢（面板里的输入框优先）
+ *  - 真正的输入框（搜索/主机名等）持有焦点时不抢
+ *  - 焦点已经在某个窗格的输入框上时也不抢 —— 用户可能刚点了另一个分屏，
+ *    后端焦点还没跟上，这时抢回 workspace.focused 会把刚点中的窗格顶掉
+ *  - 其它情况（body、按钮）才把焦点带回当前终端
+ */
+function focusTerminalInput(): void {
+  if (anyOverlayOpen()) return;
+  const active = document.activeElement as HTMLElement | null;
+  if (active && inEditable(active)) return;
+  const target = workspace.focused ? panes.get(workspace.focused) : undefined;
+  if (!target) return;
+  // 焦点已经落在目标窗格的输入框上就不用动；
+  // 落在别的窗格（切标签/切分屏）时要跟着活动窗格走。
+  if (active === target.ime) return;
+  target.ime.focus({ preventScroll: true });
 }
 
 window.addEventListener("keydown", async (e) => {
