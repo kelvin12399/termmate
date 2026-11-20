@@ -613,7 +613,65 @@ button.txt .i {
   caret-color: var(--acc);
 }
 
-/* AI 正在执行：窗格顶部绿色流光线 + 右上浮动胶囊 */
+/* 配置备份 / 迁移 */
+.cfg-action {
+  align-self: flex-start;
+  min-height: 27px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  font: inherit;
+  font-size: var(--fs-3);
+  color: #fff;
+  background: var(--acc);
+  border: none;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.cfg-action.secondary {
+  color: var(--t1);
+  background: rgba(255, 255, 255, 0.08);
+}
+.cfg-action:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+.cfg-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 7px;
+  color: var(--t2);
+  font-size: var(--fs-3);
+}
+.cfg-check input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--acc);
+}
+#cfg-export-pass-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cfg-status {
+  min-height: 16px;
+  margin-top: 6px;
+  color: var(--t2);
+  font-size: var(--fs-3);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.cfg-file,
+.cfg-meta {
+  color: var(--t3);
+  font-size: var(--fs-3);
+  line-height: 1.45;
+  word-break: break-all;
+}
+
 .pane.ai-run::before {
   background: linear-gradient(90deg, transparent, var(--grn), transparent);
   background-size: 50% 100%;
@@ -1239,7 +1297,8 @@ button.txt .i {
 /* ───────── 连接 AI 客户端 ───────── */
 
 #ai-panel,
-#look-panel {
+#look-panel,
+#config-panel {
   position: fixed;
   top: 0;
   right: 0;
@@ -1253,7 +1312,8 @@ button.txt .i {
   z-index: 20;
 }
 #ai-panel[hidden],
-#look-panel[hidden] {
+#look-panel[hidden],
+#config-panel[hidden] {
   display: none;
 }
 
@@ -2314,7 +2374,8 @@ button.ai-copy.sm .i {
   opacity: 0.72;
 }
 /* 面板自己的右键菜单，复用 ctx-menu 的观感 */
-#sftp-menu.ctx {
+#sftp-menu.ctx,
+#term-menu.ctx {
   position: fixed;
   z-index: 40;
   min-width: 160px;
@@ -2328,7 +2389,12 @@ button.ai-copy.sm .i {
   display: flex;
   flex-direction: column;
 }
-#sftp-menu.ctx button {
+#term-menu.ctx {
+  z-index: 60;
+  min-width: 132px;
+}
+#sftp-menu.ctx button,
+#term-menu.ctx button {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -2348,9 +2414,14 @@ button.ai-copy.sm .i {
   height: 13px;
   color: var(--t2);
 }
-#sftp-menu.ctx button:hover {
+#sftp-menu.ctx button:hover,
+#term-menu.ctx button:hover:not(:disabled) {
   background: var(--acc);
   color: #fff;
+}
+#term-menu.ctx button:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 #sftp-menu.ctx button:hover .i {
   color: #fff;

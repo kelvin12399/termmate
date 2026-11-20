@@ -10,6 +10,7 @@
          跑法：vite dev 起着，开 http://localhost:1420/kbd-harness.html，读 #result。 -->
     <script>
       window.__DQ_WRITES = [];
+      window.__DQ_CLIPBOARD = "";
       window.__DQ_HANDLERS = {};
       window.__DQ_CALLS = [];
       const fakeWorkspace = {
@@ -39,6 +40,11 @@
         invoke: async (cmd, args) => {
           window.__DQ_CALLS.push({ cmd, args });
           if (cmd === "write_session") window.__DQ_WRITES.push(args);
+          if (cmd === "clipboard_write_text") {
+            window.__DQ_CLIPBOARD = args.text;
+            return null;
+          }
+          if (cmd === "clipboard_read_text") return window.__DQ_CLIPBOARD;
           if (cmd === "plugin:event|listen") {
             window.__DQ_HANDLERS[args.event] = args.handler;
             return Object.keys(window.__DQ_HANDLERS).length;
@@ -62,6 +68,20 @@
           if (cmd === "mcp_info")
             return { url: "http://127.0.0.1:7391/mcp", port: 7391, listening: true, tools: 20 };
           if (cmd === "create_session") return "s1";
+          if (cmd === "get_appearance")
+            return {
+              font_size: 13,
+              font_family: "",
+              theme: "石墨",
+              line_height: 1.32,
+              cursor_style: "block",
+              language: "zh-CN",
+              bg: "#151618",
+              fg: "#c5c8c6",
+              themes: [],
+              min_font: 9,
+              max_font: 28,
+            };
           return null;
         },
       };
@@ -79,6 +99,7 @@
         <div id="side-body"></div>
         <div id="side-foot">
           <button id="host-import"></button><button id="app-settings"></button>
+          <button id="config-io"></button>
         </div>
       </aside>
       <!-- SFTP 面板的骨架：没有它 sftp.ts 会 return 掉（已加 ready 守卫），
@@ -168,6 +189,20 @@
       <div id="import-list"></div>
       <button id="import-do"></button>
     </div>
+    <div id="config-panel" hidden>
+      <button id="config-close"></button>
+      <input id="cfg-export-secrets" type="checkbox" />
+      <div id="cfg-export-pass-row" hidden>
+        <input id="cfg-export-pass" /><input id="cfg-export-pass2" />
+      </div>
+      <span id="cfg-export-status"></span>
+      <button id="cfg-export-btn"></button>
+      <button id="cfg-import-choose"></button>
+      <div id="cfg-import-file"></div><div id="cfg-import-meta"></div>
+      <div id="cfg-import-pass-row" hidden><input id="cfg-import-pass" /></div>
+      <button id="cfg-import-btn" disabled></button>
+      <div id="cfg-import-status"></div>
+    </div>
     <div id="ai-panel" hidden>
       <button id="ai-close"></button><span id="ai-state"></span><span id="ai-tools"></span>
       <code id="ai-url"></code><button id="ai-copy-url"></button>
@@ -192,6 +227,7 @@
       </div>
     </div>
     <div id="ctx-menu" hidden></div>
+    <div id="term-menu" class="ctx" hidden></div>
 
     <script type="module">
       import "/src/main.ts";
@@ -443,6 +479,168 @@
             "Ctrl-C 照旧能送进终端（没被 IME 改动弄坏）"
           );
         }
+
+        // ㉕ 真实 IME 前的 keydown：普通字符不能 preventDefault，否则 macOS 无法组字
+        window.__DQ_WRITES = [];
+        const plainZ = new KeyboardEvent("keydown", { key: "z", bubbles: true, cancelable: true });
+        imeEl.dispatchEvent(plainZ);
+        pass(!plainZ.defaultPrevented, "★ IME 普通字符 keydown 不再 preventDefault");
+        pass(window.__DQ_WRITES.length === 0, "★ 普通字符不再被 encodeKey 直写，留给 input/组字");
+        imeEl.value = "z";
+        imeEl.dispatchEvent(new InputEvent("input", { bubbles: true }));
+        await new Promise((r) => setTimeout(r, 30));
+        pass(window.__DQ_WRITES.some((w) => w.data === "z"), "★ input 事件把普通字符写进 shell");
+
+        // Ctrl+Space 是 macOS 切换输入法快捷键，不能被终端当成普通空格截走
+        window.__DQ_WRITES = [];
+        const ctrlSpace = new KeyboardEvent("keydown", {
+          key: " ",
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        imeEl.dispatchEvent(ctrlSpace);
+        pass(!ctrlSpace.defaultPrevented, "★ Ctrl+Space 不拦截 macOS 切换输入法");
+        pass(window.__DQ_WRITES.length === 0, "Ctrl+Space 不会误写成普通空格");
+
+        // 控制键仍然走原来的终端编码路径，不能被新规则误放行
+        window.__DQ_WRITES = [];
+        key(imeEl, "Backspace");
+        await new Promise((r) => setTimeout(r, 30));
+        pass(window.__DQ_WRITES.some((w) => w.data === "\x7f"), "Backspace 仍按终端控制键转发");
+
+        // ㉕─㉜ 文本选择与系统剪贴板
+        emit("term://update", {
+          session: pane1.dataset.session,
+          full: true,
+          cols: 20,
+          rows: 3,
+          lines: [
+            {
+              row: 0,
+              runs: [
+                { col: 0, text: "hello ", fg: 0xc5c8c6, bg: 0x151618, flags: 0 },
+                { col: 6, text: "世", fg: 0xc5c8c6, bg: 0x151618, flags: 128 },
+                { col: 8, text: "界", fg: 0xc5c8c6, bg: 0x151618, flags: 128 },
+              ],
+            },
+            { row: 1, runs: [{ col: 0, text: "第二行 test", fg: 0xc5c8c6, bg: 0x151618, flags: 0 }] },
+            { row: 2, runs: [{ col: 0, text: "第三行 done", fg: 0xc5c8c6, bg: 0x151618, flags: 0 }] },
+          ],
+          cursor: { row: 0, col: 0, visible: true, shape: 0 },
+        });
+        await new Promise((r) => setTimeout(r, 60));
+
+        const selCanvas = pane1.querySelector("canvas");
+        const selRect = selCanvas.getBoundingClientRect();
+        const pointer = (type, x, y) =>
+          new PointerEvent(type, {
+            bubbles: true,
+            button: 0,
+            pointerId: 1,
+            clientX: selRect.left + x,
+            clientY: selRect.top + y,
+          });
+
+        // 从第一行最左拖到最右，复制中文和 ASCII，宽字符不能错列
+        selCanvas.dispatchEvent(pointer("pointerdown", 1, 3));
+        selCanvas.dispatchEvent(pointer("pointermove", Math.max(2, selRect.width - 2), 3));
+        selCanvas.dispatchEvent(pointer("pointerup", Math.max(2, selRect.width - 2), 3));
+        imeEl.focus();
+        key(imeEl, "c", { metaKey: true });
+        await new Promise((r) => setTimeout(r, 40));
+        pass(
+          window.__DQ_CLIPBOARD === "hello 世界",
+          "★ 拖选后 ⌘C 复制正确的中文文本，实得: " + JSON.stringify(window.__DQ_CLIPBOARD)
+        );
+
+        // 右键粘贴必须读系统剪贴板并写进当前会话
+        const menu = document.getElementById("term-menu");
+        selCanvas.dispatchEvent(
+          new MouseEvent("contextmenu", {
+            bubbles: true,
+            clientX: selRect.left + 20,
+            clientY: selRect.top + 10,
+          })
+        );
+        pass(!menu.hidden, "终端里右键会弹出复制/粘贴菜单");
+        const menuLabels = [...menu.querySelectorAll("button")].map((b) => b.textContent);
+        pass(
+          ["复制", "粘贴", "全选"].every((x) => menuLabels.includes(x)),
+          "右键菜单含复制、粘贴、全选，实得: " + JSON.stringify(menuLabels)
+        );
+        window.__DQ_CLIPBOARD = "echo 右键粘贴";
+        window.__DQ_WRITES = [];
+        menu.querySelectorAll("button")[1].click();
+        await new Promise((r) => setTimeout(r, 40));
+        pass(
+          window.__DQ_WRITES.some((w) => w.data === "echo 右键粘贴"),
+          "★ 右键粘贴把系统剪贴板写进 shell"
+        );
+
+        // 全选复制多行，末尾 unused rows 不能变成几十行空白
+        selCanvas.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, clientX: selRect.left + 20, clientY: selRect.top + 10 })
+        );
+        menu.querySelectorAll("button")[2].click();
+        imeEl.focus();
+        key(imeEl, "c", { metaKey: true });
+        await new Promise((r) => setTimeout(r, 40));
+        pass(
+          window.__DQ_CLIPBOARD === "hello 世界\n第二行 test\n第三行 done",
+          "★ 全选复制保留多行且不带上屏幕末尾空行，实得: " + JSON.stringify(window.__DQ_CLIPBOARD)
+        );
+
+        // 单击没有选区时，复制项应禁用
+        selCanvas.dispatchEvent(pointer("pointerdown", 1, 3));
+        selCanvas.dispatchEvent(pointer("pointerup", 1, 3));
+        selCanvas.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, clientX: selRect.left + 20, clientY: selRect.top + 10 })
+        );
+        pass(menu.querySelectorAll("button")[0].disabled, "没有选区时右键复制项禁用");
+
+        // ㉝─㉟ 配置导入的异步状态：新文件未读完不能导入，成功后不能空口令重复提交
+        const configOpen = document.getElementById("config-io");
+        configOpen.click();
+        const importBtn = document.getElementById("cfg-import-btn");
+        pass(importBtn.disabled, "迁移面板初始状态禁止导入");
+
+        const originalInvoke = window.__TAURI_INTERNALS__.invoke;
+        window.__DQ_IMPORTS = [];
+        window.__TAURI_INTERNALS__.invoke = async (cmd, args) => {
+          if (cmd.includes("dialog") && !cmd.includes("save")) return "/tmp/test.dqconfig";
+          if (cmd === "inspect_config") {
+            await new Promise((r) => setTimeout(r, 90));
+            return { format_version: 1, hosts: 1, groups: 1, keys: 0, includes_credentials: true };
+          }
+          if (cmd === "import_config") {
+            window.__DQ_IMPORTS.push(args);
+            return "导入完成";
+          }
+          return originalInvoke(cmd, args);
+        };
+
+        document.getElementById("cfg-import-choose").click();
+        await new Promise((r) => setTimeout(r, 10));
+        pass(importBtn.disabled, "★ 新文件元数据读取期间导入按钮保持禁用");
+        pass(window.__DQ_IMPORTS.length === 0, "★ 元数据未读完不会提交新路径");
+
+        await new Promise((r) => setTimeout(r, 110));
+        pass(importBtn.disabled, "加密包未输入口令前仍禁止导入");
+        const importPass = document.getElementById("cfg-import-pass");
+        importPass.value = "test-pass";
+        importPass.dispatchEvent(new Event("input", { bubbles: true }));
+        pass(!importBtn.disabled, "加密包输入口令后允许导入");
+
+        importBtn.click();
+        await new Promise((r) => setTimeout(r, 40));
+        pass(window.__DQ_IMPORTS.length === 1, "★ 有效口令只提交一次导入");
+        pass(importBtn.disabled, "★ 导入成功后立即重置并禁用按钮");
+        importBtn.click();
+        await new Promise((r) => setTimeout(r, 20));
+        pass(window.__DQ_IMPORTS.length === 1, "★ 成功后不能空口令重复提交");
+        window.__TAURI_INTERNALS__.invoke = originalInvoke;
+        document.getElementById("config-close").click();
 
         const out = document.createElement("pre");
         out.id = "result";

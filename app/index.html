@@ -70,6 +70,10 @@
             <svg class="i"><use href="#i-download" /></svg>
             从 ~/.ssh/config 导入
           </button>
+          <button id="config-io" class="txt" title="备份 / 迁移">
+            <svg class="i"><use href="#i-download" /></svg>
+            备份 / 迁移
+          </button>
           <button id="app-settings" class="ico" title="设置">
             <svg class="i"><use href="#i-settings" /></svg>
           </button>
@@ -248,6 +252,60 @@
       <div class="drawer-foot">
         <div style="flex: 1"></div>
         <button id="import-do" class="primary">导入</button>
+      </div>
+    </div>
+
+    <!-- 配置备份 / 迁移：默认不带凭据，勾选后口令加密 -->
+    <div id="config-panel" hidden>
+      <div class="drawer-head">
+        <svg class="i"><use href="#i-download" /></svg>
+        <span>备份 / 迁移</span>
+        <div style="flex: 1"></div>
+        <button id="config-close" class="ico" title="关闭">
+          <svg class="i"><use href="#i-x" /></svg>
+        </button>
+      </div>
+      <div class="drawer-body">
+        <section class="ai-client">
+          <div class="ai-client-top">
+            <span class="ai-client-name">导出配置</span>
+            <button id="cfg-export-btn" class="cfg-action">选择位置并导出</button>
+          </div>
+          <span class="look-hint">导出主机、分组和密钥引用，不包含密码或私钥。</span>
+          <label class="cfg-check">
+            <input id="cfg-export-secrets" type="checkbox" />
+            <span>包含私钥和主机密码（用口令加密）</span>
+          </label>
+          <div id="cfg-export-pass-row" hidden>
+            <div class="fld">
+              <label for="cfg-export-pass">口令</label>
+              <input id="cfg-export-pass" type="password" autocomplete="new-password" />
+            </div>
+            <div class="fld">
+              <label for="cfg-export-pass2">确认口令</label>
+              <input id="cfg-export-pass2" type="password" autocomplete="new-password" />
+            </div>
+          </div>
+          <div id="cfg-export-status" class="cfg-status"></div>
+        </section>
+
+        <section class="ai-client">
+          <div class="ai-client-top">
+            <span class="ai-client-name">导入配置</span>
+            <button id="cfg-import-choose" class="cfg-action secondary">选择 .dqconfig 文件</button>
+          </div>
+          <span class="look-hint">同名主机会被更新，分组和密钥引用一起导入。</span>
+          <div id="cfg-import-file" class="cfg-file" data-no-i18n></div>
+          <div id="cfg-import-meta" class="cfg-meta"></div>
+          <div id="cfg-import-pass-row" class="fld" hidden>
+            <label for="cfg-import-pass">口令</label>
+            <input id="cfg-import-pass" type="password" autocomplete="off" />
+          </div>
+          <button id="cfg-import-btn" class="cfg-action" disabled>导入并覆盖同名主机</button>
+          <div id="cfg-import-status" class="cfg-status"></div>
+        </section>
+
+        <span class="look-hint">带凭据的包用口令加密；口令只在本机使用，不写日志、不经过 AI。</span>
       </div>
     </div>
 
@@ -547,6 +605,7 @@
     <div id="sftp-menu" class="ctx" hidden></div>
 
     <div id="ctx-menu" hidden></div>
+    <div id="term-menu" class="ctx" hidden></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>

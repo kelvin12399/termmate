@@ -1,7 +1,8 @@
 import { invoke } from "@tauri-apps/api/core";
 import { SftpPanel } from "./sftp";
+import { ConfigPanel } from "./config_io";
 import { listen } from "@tauri-apps/api/event";
-import { TerminalView, loadSymbolFont, type TermUpdate } from "./renderer";
+import { TerminalView, loadSymbolFont, type TermUpdate, type SelectionPoint } from "./renderer";
 import {
   Sidebar,
   closeOverlays,
@@ -193,6 +194,8 @@ const sidebar = new Sidebar(
   }
 );
 
+const configPanel = new ConfigPanel(() => void sidebar.refresh());
+
 /** 左边：当前焦点会话在哪台机器上。右边：真实的终端尺寸。 */
 function setStatus(text: string): void {
   statusLeftEl.replaceChildren();
@@ -265,6 +268,72 @@ function placeIme(pane: Pane): void {
   pane.ime.style.height = `${box.h}px`;
 }
 
+const termMenu = document.getElementById("term-menu") as HTMLElement;
+
+function selectionPoint(pane: Pane, e: MouseEvent): SelectionPoint {
+  const rect = pane.canvas.getBoundingClientRect();
+  return pane.view.cellAt(e.clientX - rect.left, e.clientY - rect.top);
+}
+
+function redrawSelection(pane: Pane): void {
+  pane.full = true;
+  scheduleFrame(pane);
+}
+
+async function copySelection(pane: Pane): Promise<void> {
+  const text = pane.view.selectionText();
+  if (!text) return;
+  try {
+    await invoke("clipboard_write_text", { text });
+    sidebar.notify(t("已复制 {count} 个字符", { count: [...text].length }));
+  } catch (err) {
+    sidebar.notify(`${err}`);
+  }
+}
+
+async function pasteInto(session: string): Promise<void> {
+  try {
+    const text = await invoke<string>("clipboard_read_text");
+    if (text) await invoke("write_session", { id: session, data: text });
+  } catch (err) {
+    sidebar.notify(`${err}`);
+  }
+}
+
+function openTerminalMenu(session: string, pane: Pane, x: number, y: number): void {
+  closeOverlays("term-menu");
+  termMenu.replaceChildren();
+
+  const add = (label: string, run: () => void | Promise<void>, disabled = false) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = label;
+    button.disabled = disabled;
+    button.addEventListener("click", () => {
+      termMenu.hidden = true;
+      void run();
+    });
+    termMenu.appendChild(button);
+  };
+
+  add(t("复制"), () => copySelection(pane), !pane.view.hasSelection());
+  add(t("粘贴"), () => pasteInto(session));
+  add(t("全选"), () => {
+    pane.view.selectAll();
+    redrawSelection(pane);
+  });
+
+  termMenu.hidden = false;
+  const width = termMenu.offsetWidth || 150;
+  const height = termMenu.offsetHeight || 108;
+  termMenu.style.left = `${Math.max(6, Math.min(x, window.innerWidth - width - 6))}px`;
+  termMenu.style.top = `${Math.max(6, Math.min(y, window.innerHeight - height - 6))}px`;
+}
+
+document.addEventListener("mousedown", (e) => {
+  if (!termMenu.hidden && !termMenu.contains(e.target as Node)) termMenu.hidden = true;
+});
+
 function createPane(session: string): Pane {
   const el = document.createElement("div");
   el.className = "pane";
@@ -307,8 +376,7 @@ function createPane(session: string): Pane {
 
   wireIme(session, pane);
 
-  // 点哪个 pane，焦点就归谁（人也在操作同一份布局）。
-  // 焦点要落在 ime 上，不是 canvas —— 否则输入法没处可去。
+  // 点哪个 pane，焦点就归谁（人也在操作同一份布局）
   el.addEventListener("mousedown", (e) => {
     // 选中文本的拖选不该被打断，所以只在没按住拖动时抢焦点
     if (e.button !== 0) return;
@@ -316,6 +384,47 @@ function createPane(session: string): Pane {
     if (workspace.focused !== session) {
       invoke("activate_session_cmd", { id: session }).catch(() => {});
     }
+  });
+
+  // 拖动选择真实终端格子。用 pointer capture，拖出 canvas 也不会丢选区。
+  let selecting = false;
+  el.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    termMenu.hidden = true;
+    for (const [otherId, other] of panes) {
+      if (otherId !== session && other.view.hasSelection()) {
+        other.view.clearSelection();
+        redrawSelection(other);
+      }
+    }
+    view.beginSelection(selectionPoint(pane, e));
+    selecting = true;
+    // 真实指针一定能 capture；合成测试事件或旧 WKWebView 没有活动 pointerId 时
+    // 不捕获也能完成当前窗格内的拖选，不该让整个手势报错。
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      /* 无活动 pointerId 时退化为普通拖动 */
+    }
+    redrawSelection(pane);
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!selecting) return;
+    view.updateSelection(selectionPoint(pane, e));
+    redrawSelection(pane);
+  });
+  const finishSelection = (e: PointerEvent) => {
+    if (!selecting) return;
+    selecting = false;
+    if (!view.hasSelection()) view.clearSelection();
+    if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+    redrawSelection(pane);
+  };
+  el.addEventListener("pointerup", finishSelection);
+  el.addEventListener("pointercancel", finishSelection);
+  el.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    openTerminalMenu(session, pane, e.clientX, e.clientY);
   });
 
   const ro = new ResizeObserver(() => scheduleFit(session));
@@ -1051,6 +1160,9 @@ async function boot(): Promise<void> {
   (document.getElementById("app-settings") as HTMLElement).addEventListener("click", () => {
     void openLookPanel();
   });
+  (document.getElementById("config-io") as HTMLElement).addEventListener("click", () => {
+    void configPanel.open();
+  });
   (document.getElementById("look-close") as HTMLElement).addEventListener("click", () => {
     lookPanel.hidden = true;
   });
@@ -1265,6 +1377,34 @@ window.addEventListener("keydown", async (e) => {
     return;
   }
 
+  // 终端里的 ⌘C/⌘A 只作用于真实选区；焦点在主机/搜索等输入框时
+  // 仍走输入框自己的复制和全选，不能抢用户的编辑操作。
+  // 终端里的 ⌘C/⌘A 优先认事件发生所在的窗格，再回退到当前焦点。
+  // 不能只看 workspace.focused：分屏里拖选另一个 pane 后，后端焦点可能尚未更新，
+  // 否则会出现「明明选中了却复制不出来」。
+  const focusedPane =
+    [...panes.values()].find((p) => e.target === p.ime || e.target === p.canvas) ??
+    (workspace.focused ? panes.get(workspace.focused) : undefined);
+  const terminalKeyTarget =
+    focusedPane &&
+    (e.target === focusedPane.ime ||
+      e.target === focusedPane.canvas ||
+      !inEditable(e.target));
+  if (focusedPane && terminalKeyTarget && e.metaKey && !e.shiftKey) {
+    const k = e.key.toLowerCase();
+    if (k === "c" && focusedPane.view.hasSelection()) {
+      e.preventDefault();
+      void copySelection(focusedPane);
+      return;
+    }
+    if (k === "a") {
+      e.preventDefault();
+      focusedPane.view.selectAll();
+      redrawSelection(focusedPane);
+      return;
+    }
+  }
+
   // 全局快捷键：焦点在哪都该生效（除了输入框里，那儿 ⌘A/⌘C 归输入框）
   if (e.metaKey && !inEditable(e.target)) {
     const k = e.key.toLowerCase();
@@ -1300,11 +1440,27 @@ window.addEventListener("keydown", async (e) => {
   //   ① 焦点在某个输入框里（在那儿打字不该同时进 shell）；
   //   ② 任何浮层开着 —— 抽屉不是模态的，点一下面板里的说明文字，
   //      焦点就回到 body，这时按键会直接打进终端，回车还会执行。
-  if (inEditable(e.target)) return;
+  // 隐藏 IME 框是例外：普通字符交给 input/composition，控制键必须继续进 shell。
+  if (inEditable(e.target) && !(e.target as HTMLElement).classList.contains("ime")) return;
   if (anyOverlayOpen()) return;
 
-  const target = workspace.focused;
+  const eventPaneEl = (e.target as HTMLElement).closest<HTMLElement>(".pane");
+  const target = eventPaneEl?.dataset.session ?? workspace.focused;
   if (!target) return;
+
+  const pane = panes.get(target);
+  if (pane && e.target === pane.ime) {
+    // 中文/日文/韩文输入法必须先把普通字符交给 textarea 组字。
+    // 原来这里对所有字符都 encodeKey + preventDefault，macOS 因此根本
+    // 没机会组字：用户看到的就是「一直直接出英文、没有候选窗」。
+    // 普通可打印字符现在交给 input/composition 事件写回 shell，
+    // 只有控制键才继续走 encodeKey。
+    if (e.key === " " && (e.ctrlKey || e.metaKey)) return;
+    if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) return;
+  }
+  // 某些 WebKit 在组字 keydown 上不会设置 isComposing，窗格状态是可靠兜底。
+  // 选词的空格、数字、回车都不能执行成 shell 命令。
+  if (pane?.el.classList.contains("composing")) return;
 
   const seq = encodeKey(e);
   if (seq === null) return;

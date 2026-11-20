@@ -1,4 +1,4 @@
-# 代敲（Daiqiao）· 需求 v0
+# 代敲（TermMate）· 需求 v0
 
 > 本地终端 App，**内置 MCP 是核心亮点**（AI 能直接操作它）
 > 本文档由主人（何双斌）口述 + 助手整理，2026-11-19
@@ -73,6 +73,10 @@
   原来整个应用没有可编辑元素，macOS 输入法无处落脚、根本不开组字 —— canvas 加 tabIndex
   只能拿焦点，它不是输入区。组字期间一个字节都不发给 shell（拼音和选词键都不能执行），
   上屏那一下把整段文字一次写进去。`keydown` 里必须看 `isComposing`，否则选词的回车会执行命令。
+  **普通可打印字符也不能在隐藏 IME 框里被全局 `preventDefault()` 截走**：
+  否则 macOS 连组字都开不了，用户只会看到直接出英文、没有候选窗。普通字符交给
+  `input` / `composition` 事件写回 shell，只有控制键走 `encodeKey`；窗格的
+  `composing` 类名作为 WebKit 不设置 `isComposing` 时的兜底。
 - **外观**：✅ 字号 9–28 / 等宽字体族 / 6 套配色 / 行高 1.0–2.0 / 光标形状，改完立刻生效。
   程序主动设过光标形状（DECSCUSR，比如 vim 插入模式）时听程序的，外观设置不盖掉它。
   配套 MCP `appearance_get` / `appearance_set` —— 每个人用功能都要有对应的 MCP 工具，

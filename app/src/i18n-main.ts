@@ -1,5 +1,5 @@
 export const MAIN_EN: Record<string, string> = {
-  代敲: "Daiqiao",
+  代敲: "TermMate",
   "输入主机名或命令…": "Enter a host name or command…",
   选择: "Select",
   执行: "Run",
@@ -53,7 +53,7 @@ export const MAIN_EN: Record<string, string> = {
   "Solarized 深": "Solarized Dark",
   "Solarized 浅": "Solarized Light",
   Dracula: "Dracula",
-  "代敲默认，暖调深灰": "Daiqiao default, warm dark gray",
+  "代敲默认，暖调深灰": "TermMate default, warm dark gray",
   "偏蓝的深色，和 GitHub 深色一致": "Blue-tinted dark, matching GitHub Dark",
   "浅色，白天强光下用": "Light theme for bright environments",
   经典低蓝光深色: "Classic low-blue-light dark theme",
@@ -62,7 +62,7 @@ export const MAIN_EN: Record<string, string> = {
 };
 
 export const MAIN_JA: Record<string, string> = {
-  代敲: "代打ち",
+  代敲: "タームメイト",
   "输入主机名或命令…": "ホスト名またはコマンドを入力…",
   选择: "選択",
   执行: "実行",
@@ -116,7 +116,7 @@ export const MAIN_JA: Record<string, string> = {
   "Solarized 深": "Solarized ダーク",
   "Solarized 浅": "Solarized ライト",
   Dracula: "Dracula",
-  "代敲默认，暖调深灰": "代打ち標準、ウォームダークグレー",
+  "代敲默认，暖调深灰": "タームメイト標準、ウォームダークグレー",
   "偏蓝的深色，和 GitHub 深色一致": "青みのダーク、GitHub Dark と同系色",
   "浅色，白天强光下用": "明るい場所向けのライトテーマ",
   经典低蓝光深色: "定番のブルーライト低減ダークテーマ",

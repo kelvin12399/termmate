@@ -24,6 +24,16 @@ export interface CursorState {
   shape: number;
 }
 
+export interface SelectionPoint {
+  row: number;
+  col: number;
+}
+
+interface Selection {
+  anchor: SelectionPoint;
+  focus: SelectionPoint;
+}
+
 export interface TermUpdate {
   session: string;
   full: boolean;
@@ -115,6 +125,7 @@ export class TerminalView {
   private ctx: CanvasRenderingContext2D;
   private lines = new Map<number, Run[]>();
   private cursor: CursorState = { row: 0, col: 0, visible: false, shape: 0 };
+  private selection: Selection | null = null;
   private glyphW = new Map<string, number>();
 
   private fontSize = 13;
@@ -239,6 +250,7 @@ export class TerminalView {
     for (let r = 0; r < this.rows; r++) {
       this.drawRow(r);
     }
+    this.drawSelection();
     this.drawCursor();
   }
 
@@ -251,12 +263,95 @@ export class TerminalView {
       ctx.fillRect(0, r * this.cellH, this.canvas.width / this.dpr, this.cellH);
       this.drawRow(r);
     }
+    this.drawSelection();
     this.drawCursor();
   }
 
   /** 列 → 像素 x，对齐到物理像素，避免相邻色块之间出现发丝缝 */
   private colX(col: number): number {
     return Math.round(col * this.cellW * this.dpr) / this.dpr;
+  }
+
+  beginSelection(point: SelectionPoint): void {
+    this.selection = { anchor: point, focus: point };
+  }
+
+  updateSelection(point: SelectionPoint): void {
+    if (this.selection) this.selection.focus = point;
+  }
+
+  clearSelection(): void {
+    this.selection = null;
+  }
+
+  selectAll(): void {
+    if (this.rows <= 0 || this.cols <= 0) return;
+    this.selection = {
+      anchor: { row: 0, col: 0 },
+      focus: { row: this.rows - 1, col: this.cols - 1 },
+    };
+  }
+
+  hasSelection(): boolean {
+    if (!this.selection) return false;
+    const { anchor, focus } = this.selection;
+    return anchor.row !== focus.row || anchor.col !== focus.col;
+  }
+
+  private orderedSelection(): [SelectionPoint, SelectionPoint] | null {
+    if (!this.hasSelection() || !this.selection) return null;
+    const { anchor: a, focus: b } = this.selection;
+    return a.row < b.row || (a.row === b.row && a.col <= b.col) ? [a, b] : [b, a];
+  }
+
+  /** 把一行的 runs 展开成真正的终端格子，宽字符占两格。 */
+  private rowCells(row: number): string[] {
+    const cells = Array<string>(this.cols).fill(" ");
+    const runs = this.lines.get(row) ?? [];
+    for (const run of runs) {
+      if (run.flags & FLAG_HIDDEN) continue;
+      const wide = (run.flags & FLAG_WIDE) !== 0;
+      let i = 0;
+      for (const ch of [...run.text]) {
+        const col = run.col + i * (wide ? 2 : 1);
+        if (col >= 0 && col < this.cols) cells[col] = ch;
+        if (wide && col + 1 >= 0 && col + 1 < this.cols) cells[col + 1] = "";
+        i++;
+      }
+    }
+    return cells;
+  }
+
+  /** 当前选区对应的纯文本，按行去掉右侧空白。 */
+  selectionText(): string {
+    const ordered = this.orderedSelection();
+    if (!ordered) return "";
+    const [start, end] = ordered;
+    const out: string[] = [];
+    for (let row = start.row; row <= end.row; row++) {
+      const cells = this.rowCells(row);
+      const from = row === start.row ? Math.max(0, start.col) : 0;
+      const to = row === end.row ? Math.min(this.cols - 1, end.col) : this.cols - 1;
+      if (to >= from) out.push(cells.slice(from, to + 1).join("").replace(/\s+$/, ""));
+    }
+    return out.join("\n").replace(/(?:\n\s*)+$/, "");
+  }
+
+  private drawSelection(): void {
+    const ordered = this.orderedSelection();
+    if (!ordered) return;
+    const [start, end] = ordered;
+    const ctx = this.ctx;
+    ctx.fillStyle = "rgba(10, 132, 255, 0.30)";
+    for (let row = start.row; row <= end.row; row++) {
+      if (row < 0 || row >= this.rows) continue;
+      const from = row === start.row ? Math.max(0, start.col) : 0;
+      const to = row === end.row ? Math.min(this.cols - 1, end.col) : this.cols - 1;
+      if (to < from) continue;
+      const x = this.colX(from);
+      const right = this.colX(to + 1);
+      ctx.fillRect(x, row * this.cellH, right - x, this.cellH);
+    }
   }
 
   /**
@@ -458,11 +553,11 @@ export class TerminalView {
     }
   }
 
-  /** 鼠标位置 → 格子坐标（供后续选区使用） */
+  /** 鼠标位置 → 格子坐标（供选区使用；拖出画面时夹到边缘） */
   cellAt(offsetX: number, offsetY: number): { col: number; row: number } {
     return {
-      col: Math.floor(offsetX / this.cellW),
-      row: Math.floor(offsetY / this.cellH),
+      col: Math.max(0, Math.min(this.cols - 1, Math.floor(offsetX / this.cellW))),
+      row: Math.max(0, Math.min(this.rows - 1, Math.floor(offsetY / this.cellH))),
     };
   }
 }

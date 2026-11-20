@@ -501,8 +501,42 @@ fn tool_defs() -> Vec<Value> {
                     "theme": { "type": "string", "description": "配色主题名" },
                     "line_height": { "type": "number", "description": "行高倍数 1.0–2.0" },
                     "cursor_style": { "type": "string", "description": "block / bar / underline" },
-                    "language": { "type": "string", "description": "界面语言：zh-CN / en / ja" }
+                    "language": { "type": "string", "description": "界面语言：zh-CN / zh-TW / en / ja / ko / de / fr / es" }
                 }
+            }
+        }),
+        json!({
+            "name": "config_export",
+            "description": "把全部主机、分组和密钥引用导出成 .dqconfig 文件，不包含私钥正文或主机密码。带凭据的加密导出请在代敲界面完成，口令不经过 AI。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "保存路径，建议以 .dqconfig 结尾" }
+                },
+                "required": ["path"]
+            }
+        }),
+        json!({
+            "name": "config_inspect",
+            "description": "读取一个 .dqconfig 配置的元数据：主机数、分组数、密钥数、是否含加密凭据。不会解密或返回任何秘密。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "配置文件路径" }
+                },
+                "required": ["path"]
+            }
+        }),
+        json!({
+            "name": "config_import",
+            "description": "导入 .dqconfig 配置，同名主机更新、其余新增，保留分组并 remap 密钥。加密包需要 passphrase；口令只用于本次解密，不写审计。",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string", "description": "配置文件路径" },
+                    "passphrase": { "type": "string", "description": "加密包的口令（不记日志）" }
+                },
+                "required": ["path"]
             }
         }),
         json!({
@@ -734,6 +768,37 @@ fn tool_appearance_set(app: &AppHandle, args: &Value) -> Result<String, String> 
         a.language,
         if a == before { "（值没变）" } else { "界面已立即生效。" }
     ))
+}
+
+fn tool_config_export(args: &Value) -> Result<String, String> {
+    let path = need(args, "path")?.to_string();
+    // MCP 只开放无凭据导出：需要口令的加密包由人在界面里完成。
+    crate::config_io::export_config(path, false, None)
+}
+
+fn tool_config_inspect(args: &Value) -> Result<String, String> {
+    let path = need(args, "path")?.to_string();
+    let v = crate::config_io::inspect_config(path)?;
+    let hosts = v.get("hosts").and_then(|x| x.as_u64()).unwrap_or(0);
+    let groups = v.get("groups").and_then(|x| x.as_u64()).unwrap_or(0);
+    let keys = v.get("keys").and_then(|x| x.as_u64()).unwrap_or(0);
+    let encrypted = v
+        .get("includes_credentials")
+        .and_then(|x| x.as_bool())
+        .unwrap_or(false);
+    Ok(format!(
+        "主机 {hosts} 台 · 分组 {groups} 个 · 密钥 {keys} 把 · {}",
+        if encrypted { "含加密凭据" } else { "不含凭据" }
+    ))
+}
+
+fn tool_config_import(args: &Value) -> Result<String, String> {
+    let path = need(args, "path")?.to_string();
+    let passphrase = args
+        .get("passphrase")
+        .and_then(|v| v.as_str())
+        .map(str::to_string);
+    crate::config_io::import_config(path, passphrase)
 }
 
 fn tool_host_key_list() -> Result<String, String> {
@@ -1151,6 +1216,7 @@ async fn call_tool(app: &AppHandle, params: &Value, client: &str) -> Result<Valu
             | "ssh_config_scan"
             | "host_key_list"
             | "appearance_get"
+            | "config_inspect"
             | "agent_status"
             | "mcp_status"
             | "sftp_open_candidates"
@@ -1179,6 +1245,9 @@ fn audit_detail(name: &str, args: &Value) -> Option<String> {
     let s = |k: &str| args.get(k).and_then(|v| v.as_str()).unwrap_or("");
     match name {
         "exec" => Some(crate::audit::redact(s("command"))),
+        "config_export" | "config_import" | "config_inspect" => {
+            Some(format!("配置文件 {}", s("path")))
+        }
         "host_exec" => Some(format!(
             "主机「{}」·{}",
             s("host"),
@@ -1254,6 +1323,9 @@ async fn call_tool_body(app: &AppHandle, name: &str, args: &Value) -> Result<Val
         "audit_list" => tool_audit_list(&args)?,
         "appearance_get" => tool_appearance_get()?,
         "appearance_set" => tool_appearance_set(app, &args)?,
+        "config_export" => tool_config_export(&args)?,
+        "config_inspect" => tool_config_inspect(&args)?,
+        "config_import" => tool_config_import(&args)?,
         "host_key_list" => tool_host_key_list()?,
         "host_key_forget" => tool_host_key_forget(&args)?,
         "ssh_config_scan" => tool_ssh_config_scan()?,

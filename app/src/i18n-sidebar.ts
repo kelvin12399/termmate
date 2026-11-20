@@ -18,7 +18,7 @@ export const SIDEBAR_EN: Record<string, string> = {
     "Delete host “{name}”?\n\n{target}\n\nThis action cannot be undone.",
   "这台主机引用的密钥已经不在了（{keyId}），请重新选一把":
     "The key referenced by this host no longer exists ({keyId}). Choose another key.",
-  代敲库: "Daiqiao vault",
+  代敲库: "TermMate vault",
   "这个私钥文件权限太松，SSH 会拒绝用它":
     "This private key file's permissions are too open; SSH will refuse to use it",
   "改成 600": "Set mode to 600",
@@ -94,7 +94,7 @@ export const SIDEBAR_JA: Record<string, string> = {
     "ホスト「{name}」を削除しますか？\n\n{target}\n\nこの操作は取り消せません。",
   "这台主机引用的密钥已经不在了（{keyId}），请重新选一把":
     "このホストが参照している鍵（{keyId}）は削除されています。別の鍵を選択してください",
-  代敲库: "代打ちキーボールト",
+  代敲库: "タームメイトキーボールト",
   "这个私钥文件权限太松，SSH 会拒绝用它":
     "秘密鍵ファイルの権限が緩すぎるため、SSH がこの鍵を拒否します",
   "改成 600": "権限を 600 に変更",

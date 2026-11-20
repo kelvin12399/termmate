@@ -104,6 +104,8 @@ const OVERLAYS = [
   "import-panel",
   "ai-panel",
   "look-panel",
+  "config-panel",
+  "term-menu",
 ] as const;
 
 /** 同时只让一个浮层露面 —— 否则同 z-index 的两个面板会无声叠在一起 */

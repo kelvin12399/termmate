@@ -1,5 +1,5 @@
 export const FR: Record<string, string> = {
-  代敲: "Daiqiao",
+  代敲: "TermMate",
   主机: "Hôtes",
   新建主机: "Nouvel hôte",
   编辑主机: "Modifier l’hôte",
@@ -48,14 +48,14 @@ export const FR: Record<string, string> = {
   "检测中…": "Vérification…",
   复制地址: "Copier l’adresse",
   "代敲自带 MCP server，跟终端同一个进程。接上的客户端看到的就是这块屏，你随时能接手。":
-    "Le serveur MCP de Daiqiao s’exécute dans le processus du terminal. Les clients connectés voient ce même écran, et vous pouvez reprendre la main à tout moment.",
+    "Le serveur MCP de TermMate s’exécute dans le processus du terminal. Les clients connectés voient ce même écran, et vous pouvez reprendre la main à tout moment.",
   复制: "Copier",
   "在终端里跑一次就行": "Exécutez une seule fois dans un terminal",
   "加到 ~/.codex/config.toml": "Ajouter à ~/.codex/config.toml",
   "加到 ~/.cursor/mcp.json": "Ajouter à ~/.cursor/mcp.json",
   "不支持 HTTP 的客户端走 stdio": "Pour les clients sans prise en charge du protocole HTTP, utilisez stdio",
   "stdio · 命令行": "stdio · Ligne de commande",
-  "代敲要开着 —— 工具操作的就是这个窗口里的会话": "Laissez Daiqiao ouvert — les outils agissent sur les sessions de cette fenêtre",
+  "代敲要开着 —— 工具操作的就是这个窗口里的会话": "Laissez TermMate ouvert — les outils agissent sur les sessions de cette fenêtre",
   "stdio · JSON 配置": "stdio · Configuration JSON",
   "填进客户端的 mcpServers": "Ajouter aux mcpServers du client",
   "多个客户端可以同时连，互不影响。": "Plusieurs clients peuvent se connecter simultanément sans interférer entre eux.",
@@ -70,7 +70,7 @@ export const FR: Record<string, string> = {
   名字: "Nom",
   类型: "Type",
   "走系统 ssh-keygen 生成，私钥存进代敲库、权限 600，不设口令（要口令就用「粘贴导入」带上）。":
-    "La paire est générée avec la commande ssh-keygen du système. La clé privée est enregistrée dans le coffre de Daiqiao avec les permissions 600 et sans phrase secrète (utilisez « Coller et importer » pour une clé protégée par phrase secrète).",
+    "La paire est générée avec la commande ssh-keygen du système. La clé privée est enregistrée dans le coffre de TermMate avec les permissions 600 et sans phrase secrète (utilisez « Coller et importer » pour une clé protégée par phrase secrète).",
   "AI 能列密钥、能指定用哪把，拿不到私钥内容。": "L’IA peut répertorier et sélectionner les clés, mais ne peut pas lire le contenu des clés privées.",
   用这把: "Utiliser cette clé",
   "双击进目录 · ⌘C/⌘X/⌘V · 拖到文件夹=移动 · 右键打开方式":
@@ -125,7 +125,7 @@ export const FR: Record<string, string> = {
   纸白: "Blanc papier",
   "Solarized 深": "Solarized sombre",
   "Solarized 浅": "Solarized clair",
-  "代敲默认，暖调深灰": "Thème Daiqiao par défaut, gris foncé chaud",
+  "代敲默认，暖调深灰": "Thème TermMate par défaut, gris foncé chaud",
   "偏蓝的深色，和 GitHub 深色一致": "Thème sombre aux tons bleus, assorti à GitHub Dark",
   "浅色，白天强光下用": "Thème clair pour les environnements très lumineux",
   经典低蓝光深色: "Thème sombre classique à faible lumière bleue",
@@ -137,7 +137,7 @@ export const FR: Record<string, string> = {
   "发布机，只走 deploy 脚本": "Hôte de déploiement ; scripts deploy uniquement",
   "留空 = SF Mono / Menlo / PingFang SC": "Vide = SF Mono / Menlo / PingFang SC",
   深圳跳板机: "Serveur bastion de Shenzhen",
-  代敲生成: "Généré par Daiqiao",
+  代敲生成: "Généré par TermMate",
   "输入主机名或命令…": "Saisissez un nom d’hôte ou une commande…",
   执行: "Exécuter",
   "没有匹配的主机或命令": "Aucun hôte ni aucune commande ne correspondent à la recherche",
@@ -188,7 +188,7 @@ export const FR: Record<string, string> = {
     "Supprimer l’hôte « {name} » ?\n\n{target}\n\nCette action est irréversible.",
   "这台主机引用的密钥已经不在了（{keyId}），请重新选一把":
     "La clé référencée par cet hôte n’existe plus ({keyId}). Choisissez une autre clé.",
-  代敲库: "Coffre de clés Daiqiao",
+  代敲库: "Coffre de clés TermMate",
   "这个私钥文件权限太松，SSH 会拒绝用它":
     "Les permissions de ce fichier de clé privée sont trop ouvertes ; SSH refusera de l’utiliser",
   "改成 600": "Définir les permissions sur 600",
@@ -287,14 +287,14 @@ export const FR: Record<string, string> = {
   "私钥文本只在导入这一下经过界面，落盘后就只剩元信息。":
     "Le texte de la clé privée ne transite par cette fenêtre que pendant l’importation. Une fois enregistrée, seules ses métadonnées sont conservées.",
   生成: "Générer",
-  "私钥已存进代敲库，权限 600。": "Clé privée enregistrée dans le coffre de Daiqiao avec les permissions 600.",
+  "私钥已存进代敲库，权限 600。": "Clé privée enregistrée dans le coffre de TermMate avec les permissions 600.",
   "走系统 ssh-keygen 生成。": "La paire est générée avec la commande ssh-keygen du système.",
   "~/.ssh 里没扫到私钥，代敲库里也还没有。\n用上面的「新建」生成一对，或「粘贴导入」贴一把进来。":
-    "Aucune clé privée trouvée dans ~/.ssh ni dans le coffre de Daiqiao.\nUtilisez « Générer » ci-dessus pour créer une paire, ou « Coller et importer » pour en ajouter une.",
+    "Aucune clé privée trouvée dans ~/.ssh ni dans le coffre de TermMate.\nUtilisez « Générer » ci-dessus pour créer une paire, ou « Coller et importer » pour en ajouter une.",
   "只记位置，不复制": "Emplacement enregistré uniquement ; fichier non copié",
   "在 ~/.ssh 里扫到 {count} 把": "{count} clé trouvée dans ~/.ssh",
   "在 ~/.ssh 里共扫到 {count} 把": "{count} clés trouvées dans ~/.ssh",
-  "代敲库（~/.daiqiao/keys，目录 700）": "Coffre de clés Daiqiao (~/.daiqiao/keys, permissions du dossier 700)",
+  "代敲库（~/.daiqiao/keys，目录 700）": "Coffre de clés TermMate (~/.daiqiao/keys, permissions du dossier 700)",
   "{count} 把": "{count} clé",
   "共 {count} 把": "{count} clés",
   有口令: "Protégée par phrase secrète",
@@ -306,7 +306,7 @@ export const FR: Record<string, string> = {
   "这把密钥读不出公钥": "Impossible d’extraire la clé publique de cette clé",
   改名: "Renommer",
   密钥名称: "Nom de la clé",
-  从代敲库删除: "Supprimer du coffre de Daiqiao",
+  从代敲库删除: "Supprimer du coffre de TermMate",
   "\n还有 {count} 台主机在用：{names}": "\n{count} hôte l’utilise encore : {names}",
   "\n共有 {count} 台主机在用：{names}": "\n{count} hôtes l’utilisent encore : {names}",
   "删掉密钥「{name}」？私钥文件会一起删掉。{used}":

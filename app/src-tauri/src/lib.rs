@@ -1,7 +1,58 @@
 mod appearance;
 mod audit;
+mod config_io;
 mod hosts;
+#[cfg(not(test))]
 mod keychain;
+#[cfg(test)]
+mod keychain {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+
+    static PASSWORDS: OnceLock<Mutex<HashMap<String, String>>> = OnceLock::new();
+
+    fn passwords() -> &'static Mutex<HashMap<String, String>> {
+        PASSWORDS.get_or_init(|| Mutex::new(HashMap::new()))
+    }
+
+    pub fn set(host_id: &str, password: &str) -> Result<(), String> {
+        if password.is_empty() {
+            return Err("密码不能为空".into());
+        }
+        passwords()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .insert(host_id.to_string(), password.to_string());
+        Ok(())
+    }
+
+    pub fn get(host_id: &str) -> Result<Option<String>, String> {
+        Ok(passwords()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get(host_id)
+            .cloned())
+    }
+
+    pub fn delete(host_id: &str) -> Result<(), String> {
+        passwords()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .remove(host_id);
+        Ok(())
+    }
+
+    pub fn saved(host_id: &str) -> bool {
+        matches!(get(host_id), Ok(Some(_)))
+    }
+
+    pub fn clear() {
+        passwords()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clear();
+    }
+}
 mod keys;
 mod known_hosts;
 mod mcp;
@@ -337,6 +388,39 @@ fn mcp_info() -> serde_json::Value {
 #[tauri::command]
 fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
+}
+
+/// 系统剪贴板：右键复制/粘贴都走原生实现，WKWebView 权限差异不影响使用。
+#[tauri::command]
+fn clipboard_write_text(text: String) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut child = std::process::Command::new("/usr/bin/pbcopy")
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("启动 pbcopy 失败: {e}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "拿不到 pbcopy 的输入管道".to_string())?
+        .write_all(text.as_bytes())
+        .map_err(|e| format!("写入剪贴板失败: {e}"))?;
+    let status = child.wait().map_err(|e| format!("pbcopy 等待失败: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("pbcopy 失败: {status}"))
+    }
+}
+
+#[tauri::command]
+fn clipboard_read_text() -> Result<String, String> {
+    let out = std::process::Command::new("/usr/bin/pbpaste")
+        .output()
+        .map_err(|e| format!("启动 pbpaste 失败: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("pbpaste 失败: {}", out.status));
+    }
+    String::from_utf8(out.stdout).map_err(|_| "剪贴板里不是 UTF-8 文本".to_string())
 }
 
 #[tauri::command]
@@ -940,6 +1024,8 @@ pub fn run() {
             close_session_cmd,
             mcp_info,
             set_window_title,
+            clipboard_write_text,
+            clipboard_read_text,
             get_appearance,
             set_appearance,
             write_session,
@@ -955,6 +1041,9 @@ pub fn run() {
             connect_host,
             scan_ssh_config,
             import_ssh_config,
+            config_io::export_config,
+            config_io::inspect_config,
+            config_io::import_config,
             list_keys_cmd,
             import_key_file,
             import_key_text,
