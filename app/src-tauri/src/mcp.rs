@@ -21,7 +21,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const SERVER_NAME: &str = "daiqiao";
-const SERVER_VERSION: &str = "0.1.0";
+const SERVER_VERSION: &str = "0.2.0";
 
 /// MCP server 是否真的绑上了端口 —— 界面上的状态读这个，不靠猜
 pub static LISTENING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
