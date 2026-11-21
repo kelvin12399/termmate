@@ -1629,6 +1629,10 @@ button.ai-copy.sm .i {
   color: var(--amb);
   background: rgba(255, 179, 64, 0.13);
 }
+.key-badge.ok {
+  color: var(--grn);
+  background: rgba(48, 209, 88, 0.12);
+}
 
 .key-swap {
   flex: none;
@@ -1682,6 +1686,13 @@ button.ai-copy.sm .i {
 }
 .key-alert button:hover {
   background: rgba(255, 255, 255, 0.2);
+}
+.key-alert.ok {
+  color: var(--grn);
+  background: rgba(48, 209, 88, 0.09);
+}
+.key-alert.ok button {
+  color: var(--t1);
 }
 .key-used {
   margin-top: 6px;
@@ -2192,6 +2203,111 @@ button.ai-copy.sm .i {
   opacity: 0.45;
   cursor: default;
   filter: none;
+}
+
+/* ───────── 密钥口令对话框（压在密钥库上） ───────── */
+
+#key-pass {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 24vh;
+  background: rgba(0, 0, 0, 0.32);
+}
+#key-pass[hidden] {
+  display: none;
+}
+
+.kp-box {
+  width: min(400px, calc(100vw - 80px));
+  display: flex;
+  flex-direction: column;
+  background: rgba(34, 35, 39, 0.96);
+  backdrop-filter: blur(40px) saturate(180%);
+  -webkit-backdrop-filter: blur(40px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 12px;
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.kp-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 46px;
+  padding: 0 10px 0 14px;
+  border-bottom: 1px solid var(--line2);
+}
+.kp-head > .i {
+  flex: none;
+  color: var(--t2);
+}
+.kp-title {
+  font-size: var(--fs-1);
+  color: var(--t1);
+}
+.kp-key {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--t3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kp-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.kp-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--line2);
+}
+.kp-foot button {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: var(--fs-2);
+  border-radius: var(--r);
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--t1);
+  cursor: pointer;
+}
+.kp-foot button:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+.kp-foot button.primary {
+  background: var(--acc);
+  border-color: transparent;
+  color: #fff;
+  font-weight: 500;
+}
+.kp-foot button.primary:hover {
+  filter: brightness(1.08);
+}
+.kp-foot button.danger {
+  color: var(--red);
+}
+.kp-foot button.danger:hover {
+  background: rgba(255, 107, 94, 0.14);
 }
 
 /* ── 认证：密码行 + agent 行 ─────────────────────────── */

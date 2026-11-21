@@ -13,6 +13,37 @@
       window.__DQ_CLIPBOARD = "";
       window.__DQ_HANDLERS = {};
       window.__DQ_CALLS = [];
+      // 密钥库回归用：可变密钥列表 + import/set 口令桩
+      window.__DQ_KEYS = [
+        {
+          id: "k-ssh",
+          name: "id_ed25519",
+          path: "/Users/me/.ssh/id_ed25519",
+          source: "ssh_dir",
+          algo: "ssh-ed25519",
+          fingerprint: "SHA256:AAA",
+          encrypted: false,
+          passphrase_saved: false,
+          comment: null,
+          perm_ok: true,
+          public_key: "ssh-ed25519 AAAA test",
+          used_by: [],
+        },
+        {
+          id: "k-enc",
+          name: "跳板机钥匙",
+          path: "~/.daiqiao/keys/jump",
+          source: "vault",
+          algo: "ssh-ed25519",
+          fingerprint: "SHA256:BBB",
+          encrypted: true,
+          passphrase_saved: false,
+          comment: null,
+          perm_ok: true,
+          public_key: "ssh-ed25519 BBBB test",
+          used_by: [],
+        },
+      ];
       const fakeWorkspace = {
         tabs: [
           { id: "t1", title: "本地终端", layout: { kind: "leaf", session: "s1" } },
@@ -50,6 +81,48 @@
             return Object.keys(window.__DQ_HANDLERS).length;
           }
           if (cmd === "get_workspace") return fakeWorkspace;
+          if (cmd === "list_keys_cmd") return window.__DQ_KEYS;
+          if (cmd === "import_key_text") {
+            const k = {
+              id: "k-new-" + window.__DQ_KEYS.length,
+              name: args.name || "粘贴导入",
+              path: "~/.daiqiao/keys/pasted",
+              source: "vault",
+              algo: "ssh-ed25519",
+              fingerprint: "SHA256:CCC",
+              encrypted: !!args.passphrase,
+              passphrase_saved: false,
+              comment: null,
+              perm_ok: true,
+              public_key: "ssh-ed25519 CCCC test",
+              used_by: [],
+            };
+            window.__DQ_KEYS.push(k);
+            return k;
+          }
+          if (cmd === "set_key_passphrase") {
+            const k = window.__DQ_KEYS.find((x) => x.id === args.id);
+            if (k) k.passphrase_saved = args.passphrase != null;
+            return null;
+          }
+          if (cmd === "generate_key_cmd") {
+            const k = {
+              id: "k-gen-" + window.__DQ_KEYS.length,
+              name: args.name || "代敲生成",
+              path: "~/.daiqiao/keys/gen",
+              source: "vault",
+              algo: args.algo,
+              fingerprint: "SHA256:DDD",
+              encrypted: false,
+              passphrase_saved: false,
+              comment: null,
+              perm_ok: true,
+              public_key: "ssh-ed25519 DDDD test",
+              used_by: [],
+            };
+            window.__DQ_KEYS.push(k);
+            return k;
+          }
           if (cmd === "list_hosts")
             return [
               {
@@ -93,6 +166,7 @@
             <button data-view="hosts" class="on">主机</button>
             <button data-view="sftp">SFTP</button>
           </div>
+          <button id="side-keyvault"></button>
           <button id="host-new"></button>
         </div>
         <div id="side-search-wrap"><input id="side-search" type="text" /></div>
@@ -169,7 +243,7 @@
       <div id="kv-pick"></div>
       <div id="kv-paste" hidden>
         <textarea id="kv-text"></textarea><div id="kv-parsed" hidden></div>
-        <input id="kv-paste-name" />
+        <input id="kv-paste-name" /><input id="kv-paste-pass" type="password" />
       </div>
       <div id="kv-gen" hidden>
         <div id="kv-gen-form">
@@ -183,6 +257,14 @@
       </div>
       <span id="kv-note"></span>
       <button id="kv-file"></button><button id="kv-ok"></button><button id="kv-close"></button>
+    </div>
+    <!-- 密钥口令对话框骨架（密钥库改造后新增） -->
+    <div id="key-pass" hidden>
+      <span id="kp-title"></span><span id="kp-key"></span>
+      <button id="kp-close"></button>
+      <input id="kp-pass" type="password" />
+      <button id="kp-clear"></button><button id="kp-cancel"></button>
+      <button id="kp-save"></button>
     </div>
     <div id="import-panel" hidden>
       <button id="import-close"></button>
@@ -454,13 +536,17 @@
             pane2.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0, cancelable: true }));
             await new Promise((r) => setTimeout(r, 30));
             pass(document.activeElement === ime2, "★ 点另一个分屏后焦点跟过去，不被抢回原窗格");
+            // 注意：隐藏标签页里程序化 blur() 不派发 focusout（Chromium 行为，
+            // 真实可见窗口里会自然带上）。这里手动补发，驱动 main.ts 的回收链路。
             ime2.blur();
-            await new Promise((r) => setTimeout(r, 30));
-            pass(
-              document.activeElement instanceof HTMLTextAreaElement &&
-                document.activeElement.classList.contains("ime"),
-              "★ 焦点掉到 body 后会自动收回终端输入框"
-            );
+            ime2.dispatchEvent(new FocusEvent("focusout", { bubbles: true }));
+            let reclaimed = false;
+            for (let i = 0; i < 40 && !reclaimed; i++) {
+              await new Promise((r) => setTimeout(r, 50));
+              const a = document.activeElement;
+              reclaimed = a instanceof HTMLTextAreaElement && a.classList.contains("ime");
+            }
+            pass(reclaimed, "★ 焦点掉到 body 后会自动收回终端输入框");
           }
 
           // 组字期间：一个字节都不能发给 shell
@@ -627,6 +713,134 @@
           new MouseEvent("contextmenu", { bubbles: true, clientX: selRect.left + 20, clientY: selRect.top + 10 })
         );
         pass(menu.querySelectorAll("button")[0].disabled, "没有选区时右键复制项禁用");
+
+        // ───── 密钥库改造回归：侧栏入口 / 口令管理 / 粘贴带口令 / 抽屉联动 ─────
+        const kv = document.getElementById("keyvault");
+        const kp = document.getElementById("key-pass");
+        const kvOk = document.getElementById("kv-ok");
+        const kpPass = document.getElementById("kp-pass");
+        const rows = () => [...kv.querySelectorAll("#kv-pick .kv-row")];
+        const findRow = (nm) => rows().find((r) => r.textContent.includes(nm));
+
+        // ㊱ 侧栏「密钥库」入口：管理模式打开，主按钮是「完成」且不依赖选中
+        document.getElementById("side-keyvault").click();
+        await new Promise((r) => setTimeout(r, 60));
+        pass(!kv.hidden && kvOk.textContent === "完成" && !kvOk.disabled, "★ 侧栏钥匙入口打开密钥库（管理模式，按钮=完成）");
+        pass(rows().length === window.__DQ_KEYS.length, "管理模式列出全部密钥");
+
+        // ㊲ 加密密钥行：口令状态徽章 + 锁按钮
+        const encRow1 = findRow("跳板机钥匙");
+        pass(!!encRow1 && encRow1.textContent.includes("未存口令"), "未存口令的加密密钥显示「未存口令」徽章");
+        const lockBtn = encRow1 && encRow1.querySelector('.kv-acts button[title="存口令"]');
+        pass(!!lockBtn, "加密密钥行有「存口令」锁按钮");
+
+        // ㊳ 锁按钮弹口令框；回车保存走 set_key_passphrase，徽章变「已存口令」
+        window.__DQ_CALLS = [];
+        lockBtn.click();
+        await new Promise((r) => setTimeout(r, 30));
+        pass(!kp.hidden && document.getElementById("kp-key").textContent.includes("跳板机钥匙"), "锁按钮弹出该密钥的口令框");
+        window.__DQ_WRITES = [];
+        key(document.body, "z");
+        pass(window.__DQ_WRITES.length === 0, "口令框开着时按键不漏进终端");
+        kpPass.value = "topsecret";
+        key(kpPass, "Enter");
+        await new Promise((r) => setTimeout(r, 60));
+        const setCall = window.__DQ_CALLS.find((c) => c.cmd === "set_key_passphrase");
+        pass(!!setCall && setCall.args.passphrase === "topsecret", "★ 回车保存把口令传给 set_key_passphrase");
+        pass(kp.hidden, "保存后口令框收起");
+        pass(findRow("跳板机钥匙").textContent.includes("已存口令"), "保存后徽章变「已存口令」");
+
+        // ㊴ 清除口令：确认后传 null，徽章回「未存口令」
+        window.confirm = () => true;
+        window.__DQ_CALLS = [];
+        findRow("跳板机钥匙").querySelector('.kv-acts button[title="存口令"]').click();
+        await new Promise((r) => setTimeout(r, 30));
+        document.getElementById("kp-clear").click();
+        await new Promise((r) => setTimeout(r, 60));
+        const clearCall = window.__DQ_CALLS.find((c) => c.cmd === "set_key_passphrase");
+        pass(!!clearCall && clearCall.args.passphrase === null, "★ 清除按钮给 set_key_passphrase 传 null");
+        pass(findRow("跳板机钥匙").textContent.includes("未存口令"), "清除后徽章回「未存口令」");
+
+        // ㊵ Esc 一次只收一层：先口令框，再密钥库，都不漏键
+        window.__DQ_WRITES = [];
+        findRow("跳板机钥匙").querySelector('.kv-acts button[title="存口令"]').click();
+        await new Promise((r) => setTimeout(r, 30));
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+        pass(kp.hidden && !kv.hidden, "第一下 Esc 只收口令框，密钥库还在");
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+        pass(kv.hidden, "第二下 Esc 收掉密钥库");
+        pass(window.__DQ_WRITES.length === 0, "这两下 Esc 都没漏进 shell");
+
+        // ㊶ 管理模式粘贴导入：带口令导入后不关弹层、切回列表、口令框清空
+        document.getElementById("side-keyvault").click();
+        await new Promise((r) => setTimeout(r, 40));
+        kv.querySelector('[data-tab="paste"]').click();
+        await new Promise((r) => setTimeout(r, 20));
+        const kvText = document.getElementById("kv-text");
+        kvText.value = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----";
+        kvText.dispatchEvent(new Event("input", { bubbles: true }));
+        document.getElementById("kv-paste-pass").value = "importpass";
+        window.__DQ_CALLS = [];
+        kvOk.click();
+        await new Promise((r) => setTimeout(r, 60));
+        const impCall = window.__DQ_CALLS.find((c) => c.cmd === "import_key_text");
+        pass(!!impCall && impCall.args.passphrase === "importpass", "★ 粘贴导入把口令传给 import_key_text");
+        pass(!kv.hidden && document.getElementById("kv-paste").hidden, "管理模式导入后不关弹层、切回选择页");
+        pass(document.getElementById("kv-paste-pass").value === "", "导入后口令框清空");
+        pass(!!findRow("粘贴导入"), "导入的新密钥出现在列表里");
+
+        // ㊶b 管理模式新建：生成后同样不关弹层、切回列表
+        kv.querySelector('[data-tab="gen"]').click();
+        await new Promise((r) => setTimeout(r, 20));
+        window.__DQ_CALLS = [];
+        kvOk.click();
+        await new Promise((r) => setTimeout(r, 60));
+        pass(window.__DQ_CALLS.some((c) => c.cmd === "generate_key_cmd"), "管理模式能生成新密钥");
+        pass(!kv.hidden && document.getElementById("kv-gen").hidden, "生成后不关弹层、切回选择页");
+        pass(!!findRow("代敲生成"), "生成的密钥出现在列表里");
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+
+        // ㊷ 抽屉里选加密密钥：未存口令 → 提示去存 + 「去存口令」直达口令框
+        hostNew.click();
+        await new Promise((r) => setTimeout(r, 40));
+        document.getElementById("f-key-pick").click();
+        await new Promise((r) => setTimeout(r, 60));
+        pass(!kv.hidden && kvOk.textContent === "用这把", "抽屉入口打开密钥库（选择模式，按钮=用这把）");
+        findRow("跳板机钥匙").click();
+        await new Promise((r) => setTimeout(r, 20));
+        kvOk.click();
+        await new Promise((r) => setTimeout(r, 60));
+        pass(kv.hidden && !document.getElementById("f-key-card").hidden, "选中加密密钥后回到抽屉显示密钥卡");
+        const alertEl = document.getElementById("f-key-alert");
+        pass(
+          !alertEl.hidden && document.getElementById("f-key-alert-text").textContent.includes("去密钥库存一下"),
+          "未存口令时提示「这把密钥有口令，去密钥库存一下」"
+        );
+        const goBtn = document.getElementById("f-key-alert-act");
+        pass(!goBtn.hidden && goBtn.textContent === "去存口令", "未存口令时有「去存口令」按钮");
+        goBtn.click();
+        await new Promise((r) => setTimeout(r, 60));
+        pass(!kv.hidden && !kp.hidden, "★ 「去存口令」直接打开密钥库并弹出该密钥的口令框");
+
+        // ㊸ 存完口令：抽屉提示同步成「口令已存进钥匙串」（绿色 ok 态、无按钮）
+        kpPass.value = "drawer-pass";
+        document.getElementById("kp-save").click();
+        await new Promise((r) => setTimeout(r, 80));
+        pass(kp.hidden, "保存后口令框收起");
+        const alertText2 = document.getElementById("f-key-alert-text").textContent;
+        pass(
+          alertText2.includes("口令已存进钥匙串") && alertEl.classList.contains("ok"),
+          "★ 存完口令抽屉提示同步成「口令已存进钥匙串」（ok 态）"
+        );
+        pass(document.getElementById("f-key-alert-act").hidden, "已存口令后「去存口令」按钮消失");
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+        key(document.body, "Escape");
+        await new Promise((r) => setTimeout(r, 40));
+        pass(document.getElementById("drawer").hidden, "收尾：密钥库和抽屉都关掉了");
 
         // ㉝─㉟ 配置导入的异步状态：新文件未读完不能导入，成功后不能空口令重复提交
         const configOpen = document.getElementById("config-io");

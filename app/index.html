@@ -46,6 +46,9 @@
             <button data-view="hosts" class="on">主机</button>
             <button data-view="sftp">SFTP</button>
           </div>
+          <button id="side-keyvault" class="ico" title="密钥库">
+            <svg class="i"><use href="#i-key" /></svg>
+          </button>
           <button id="host-new" class="ico" title="新建主机">
             <svg class="i"><use href="#i-plus" /></svg>
           </button>
@@ -514,6 +517,15 @@
               <span>起个名字</span>
               <input id="kv-paste-name" placeholder="深圳跳板机" spellcheck="false" />
             </label>
+            <label class="fld" style="flex: 0 0 190px">
+              <span>口令（如果有）</span>
+              <input
+                id="kv-paste-pass"
+                type="password"
+                autocomplete="new-password"
+                spellcheck="false"
+              />
+            </label>
           </div>
           <p class="hintline ok">
             <svg class="i"><use href="#i-shield" /></svg>
@@ -567,6 +579,41 @@
             选择文件…
           </button>
           <button id="kv-ok" class="primary">用这把</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 密钥口令：单独一层小对话框，压在密钥库上。口令只进 macOS 钥匙串 -->
+    <div id="key-pass" hidden>
+      <div class="kp-box">
+        <div class="kp-head">
+          <svg class="i"><use href="#i-lock" /></svg>
+          <span id="kp-title">存口令</span>
+          <span id="kp-key" class="kp-key"></span>
+          <button id="kp-close" class="ico" title="关闭">
+            <svg class="i"><use href="#i-x" /></svg>
+          </button>
+        </div>
+        <div class="kp-body">
+          <label class="fld">
+            <span>口令</span>
+            <input
+              id="kp-pass"
+              type="password"
+              autocomplete="new-password"
+              spellcheck="false"
+            />
+          </label>
+          <p class="hintline ok">
+            <svg class="i"><use href="#i-shield" /></svg>
+            只存进 macOS 钥匙串；不写日志、不进 AI 上下文。
+          </p>
+        </div>
+        <div class="kp-foot">
+          <button id="kp-clear" class="danger">清除</button>
+          <div style="flex: 1"></div>
+          <button id="kp-cancel">取消</button>
+          <button id="kp-save" class="primary">保存</button>
         </div>
       </div>
     </div>

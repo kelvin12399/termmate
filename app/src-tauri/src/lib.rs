@@ -6,6 +6,8 @@ mod hosts;
 mod keychain;
 #[cfg(test)]
 mod keychain {
+    // 测试里不动真钥匙串：应用代码用的这一份是进程内的 mock。
+    // 账号前缀和真实现（keychain.rs）保持一致，主机密码和密钥口令分两个命名空间。
     use std::collections::HashMap;
     use std::sync::{Mutex, OnceLock};
 
@@ -15,6 +17,14 @@ mod keychain {
         PASSWORDS.get_or_init(|| Mutex::new(HashMap::new()))
     }
 
+    fn host_account(host_id: &str) -> String {
+        format!("ssh-host:{host_id}")
+    }
+
+    fn key_account(key_id: &str) -> String {
+        format!("ssh-key:{key_id}")
+    }
+
     pub fn set(host_id: &str, password: &str) -> Result<(), String> {
         if password.is_empty() {
             return Err("密码不能为空".into());
@@ -22,7 +32,7 @@ mod keychain {
         passwords()
             .lock()
             .map_err(|e| e.to_string())?
-            .insert(host_id.to_string(), password.to_string());
+            .insert(host_account(host_id), password.to_string());
         Ok(())
     }
 
@@ -30,7 +40,7 @@ mod keychain {
         Ok(passwords()
             .lock()
             .map_err(|e| e.to_string())?
-            .get(host_id)
+            .get(&host_account(host_id))
             .cloned())
     }
 
@@ -38,12 +48,43 @@ mod keychain {
         passwords()
             .lock()
             .map_err(|e| e.to_string())?
-            .remove(host_id);
+            .remove(&host_account(host_id));
         Ok(())
     }
 
     pub fn saved(host_id: &str) -> bool {
         matches!(get(host_id), Ok(Some(_)))
+    }
+
+    pub fn set_key_passphrase(key_id: &str, passphrase: &str) -> Result<(), String> {
+        if passphrase.is_empty() {
+            return Err("口令不能为空".into());
+        }
+        passwords()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .insert(key_account(key_id), passphrase.to_string());
+        Ok(())
+    }
+
+    pub fn get_key_passphrase(key_id: &str) -> Result<Option<String>, String> {
+        Ok(passwords()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get(&key_account(key_id))
+            .cloned())
+    }
+
+    pub fn delete_key_passphrase(key_id: &str) -> Result<(), String> {
+        passwords()
+            .lock()
+            .map_err(|e| e.to_string())?
+            .remove(&key_account(key_id));
+        Ok(())
+    }
+
+    pub fn key_passphrase_saved(key_id: &str) -> bool {
+        matches!(get_key_passphrase(key_id), Ok(Some(_)))
     }
 
     pub fn clear() {
@@ -53,6 +94,13 @@ mod keychain {
             .clear();
     }
 }
+/// 真钥匙串实现再挂一份：上面那份 mock 只在测试构建里给应用代码用，
+/// 而 keychain.rs 自己的单元测试要动**真**登录钥匙串（service=daiqiao，
+/// 账号带 dqtest- 前缀，跑完自己清）—— 不挂这份的话它们永远不会被跑。
+#[cfg(test)]
+#[path = "keychain.rs"]
+#[allow(dead_code)]
+mod keychain_real;
 mod keys;
 mod known_hosts;
 mod mcp;
@@ -278,9 +326,15 @@ pub fn spawn_ssh_tab(
     };
 
     let label = host.name.clone();
-    let session =
-        Session::spawn_ssh(id.clone(), cols.max(2), rows.max(2), host, on_update, on_exit)
-            .map_err(|e| format!("连接 SSH 失败: {e}"))?;
+    let session = Session::spawn_ssh(
+        id.clone(),
+        cols.max(2),
+        rows.max(2),
+        host,
+        on_update,
+        on_exit,
+    )
+    .map_err(|e| format!("连接 SSH 失败: {e}"))?;
     let session = Arc::new(session);
 
     state
@@ -327,7 +381,12 @@ pub fn activate_session(app: &AppHandle, state: &AppState, id: &str) -> Result<(
     Ok(())
 }
 
-pub fn rename_session(app: &AppHandle, state: &AppState, id: &str, title: &str) -> Result<(), String> {
+pub fn rename_session(
+    app: &AppHandle,
+    state: &AppState,
+    id: &str,
+    title: &str,
+) -> Result<(), String> {
     let ok = state
         .workspace
         .lock()
@@ -343,7 +402,12 @@ pub fn rename_session(app: &AppHandle, state: &AppState, id: &str, title: &str) 
 // ───────────────────────── Tauri 命令（前端调用）─────────────────────────
 
 #[tauri::command]
-fn create_session(app: AppHandle, state: State<AppState>, cols: u16, rows: u16) -> Result<String, String> {
+fn create_session(
+    app: AppHandle,
+    state: State<AppState>,
+    cols: u16,
+    rows: u16,
+) -> Result<String, String> {
     spawn_tab(&app, &state, cols, rows, None)
 }
 
@@ -366,7 +430,12 @@ fn activate_session_cmd(app: AppHandle, state: State<AppState>, id: String) -> R
 }
 
 #[tauri::command]
-fn rename_session_cmd(app: AppHandle, state: State<AppState>, id: String, title: String) -> Result<(), String> {
+fn rename_session_cmd(
+    app: AppHandle,
+    state: State<AppState>,
+    id: String,
+    title: String,
+) -> Result<(), String> {
     rename_session(&app, &state, &id, &title)
 }
 
@@ -515,7 +584,8 @@ fn resize_session(
     rows: u16,
 ) -> Result<(), String> {
     let s = state.get(&id).ok_or("会话不存在")?;
-    s.resize(cols.max(2), rows.max(2)).map_err(|e| e.to_string())?;
+    s.resize(cols.max(2), rows.max(2))
+        .map_err(|e| e.to_string())?;
     if let Some(u) = s.force_full(&id) {
         let _ = app.emit(EVENT_TERM_UPDATE, u);
     }
@@ -535,7 +605,11 @@ fn redraw_session(app: AppHandle, state: State<AppState>, id: String) -> Result<
 
 #[tauri::command]
 fn get_workspace(state: State<AppState>) -> Workspace {
-    state.workspace.lock().map(|w| w.clone()).unwrap_or_default()
+    state
+        .workspace
+        .lock()
+        .map(|w| w.clone())
+        .unwrap_or_default()
 }
 
 // ───────────────────── 主机管理的 UI 命令 ─────────────────────
@@ -577,14 +651,21 @@ fn save_host(
     )?;
     store.save().map_err(|e| e.to_string())?;
     audit::human(
-        if key.is_some() { "界面·修改主机" } else { "界面·新建主机" },
+        if key.is_some() {
+            "界面·修改主机"
+        } else {
+            "界面·新建主机"
+        },
         Some(format!("主机「{name}」 {user}@{hostname}:{port}")),
     );
     // 密码走钥匙串，不进 hosts.json；内容不进审计
     if auth == "password" {
         if let Some(pw) = password.filter(|p| !p.is_empty()) {
             keychain::set(&id, &pw)?;
-            audit::human("界面·存主机密码", Some(format!("主机「{name}」（内容不落日志）")));
+            audit::human(
+                "界面·存主机密码",
+                Some(format!("主机「{name}」（内容不落日志）")),
+            );
         }
     }
     emit_hosts(&app);
@@ -640,7 +721,9 @@ pub fn agent_status_inner(host: Option<&str>) -> Result<serde_json::Value, Strin
     } else if out.status.code() == Some(1) {
         Ok(serde_json::json!({ "running": true, "count": 0, "socket": socket }))
     } else {
-        Err(format!("连不上 agent（{socket}）。它可能没在运行，或 1Password 的 SSH Agent 没启用"))
+        Err(format!(
+            "连不上 agent（{socket}）。它可能没在运行，或 1Password 的 SSH Agent 没启用"
+        ))
     }
 }
 
@@ -666,7 +749,14 @@ fn delete_host(app: AppHandle, key: String) -> Result<(), String> {
     store.save().map_err(|e| e.to_string())?;
     audit::human(
         "界面·删除主机",
-        Some(format!("主机「{}」", if gone.is_empty() { key.clone() } else { gone.join("、") })),
+        Some(format!(
+            "主机「{}」",
+            if gone.is_empty() {
+                key.clone()
+            } else {
+                gone.join("、")
+            }
+        )),
     );
     emit_hosts(&app);
     Ok(())
@@ -707,7 +797,10 @@ fn import_key_file(
 ) -> Result<serde_json::Value, String> {
     let info = keys::import_file(std::path::Path::new(&path), name.as_deref())
         .map_err(|e| e.to_string())?;
-    audit::human("界面·导入密钥文件", Some(format!("密钥「{}」 {}", info.name, info.algo)));
+    audit::human(
+        "界面·导入密钥文件",
+        Some(format!("密钥「{}」 {}", info.name, info.algo)),
+    );
     emit_keys(&app);
     Ok(keys::key_view(&info))
 }
@@ -717,11 +810,57 @@ fn import_key_text(
     app: AppHandle,
     text: String,
     name: Option<String>,
+    passphrase: Option<String>,
 ) -> Result<serde_json::Value, String> {
-    let info = keys::import_text(&text, name.as_deref()).map_err(|e| e.to_string())?;
-    audit::human("界面·粘贴导入密钥", Some(format!("密钥「{}」 {}", info.name, info.algo)));
+    // 空串当没填，免得前端没处理干净就传过来
+    let passphrase = passphrase.filter(|p| !p.is_empty());
+    let info = keys::import_text(&text, name.as_deref(), passphrase.as_deref())
+        .map_err(|e| e.to_string())?;
+    audit::human(
+        "界面·粘贴导入密钥",
+        Some(format!(
+            "密钥「{}」 {}{}",
+            info.name,
+            info.algo,
+            if info.encrypted {
+                "（带口令，口令已存钥匙串）"
+            } else {
+                ""
+            }
+        )),
+    );
     emit_keys(&app);
     Ok(keys::key_view(&info))
+}
+
+/// 给一把密钥存 / 清「解锁口令」（带 passphrase 的私钥连接时要用）。
+/// `passphrase` 传 None（或空串）= 清除。存之前先拿它解一遍私钥，
+/// 错口令当场报出来，绝不把没验证过的口令写进钥匙串；口令内容不落日志。
+#[tauri::command]
+fn set_key_passphrase(
+    app: AppHandle,
+    id: String,
+    passphrase: Option<String>,
+) -> Result<(), String> {
+    let used = hosts_by_key();
+    let info = keys::find_key(&id, &used).ok_or("找不到这把密钥")?;
+    match passphrase.as_deref().filter(|p| !p.is_empty()) {
+        Some(pw) => {
+            keys::verify_passphrase(std::path::Path::new(&info.path), pw)
+                .map_err(|e| e.to_string())?;
+            keychain::set_key_passphrase(&id, pw)?;
+            audit::human(
+                "界面·存密钥口令",
+                Some(format!("密钥「{}」（内容不落日志）", info.name)),
+            );
+        }
+        None => {
+            keychain::delete_key_passphrase(&id)?;
+            audit::human("界面·清除密钥口令", Some(format!("密钥「{}」", info.name)));
+        }
+    }
+    emit_keys(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -737,7 +876,10 @@ fn generate_key_cmd(
         comment.as_deref().unwrap_or("daiqiao"),
     )
     .map_err(|e| e.to_string())?;
-    audit::human("界面·生成密钥", Some(format!("密钥「{}」 {}", info.name, info.algo)));
+    audit::human(
+        "界面·生成密钥",
+        Some(format!("密钥「{}」 {}", info.name, info.algo)),
+    );
     emit_keys(&app);
     Ok(keys::key_view(&info))
 }
@@ -801,25 +943,42 @@ async fn sftp_ls(host: String, path: String) -> Result<Vec<serde_json::Value>, S
 }
 
 #[tauri::command]
-async fn sftp_put(app: AppHandle, host: String, local: String, remote: String) -> Result<u64, String> {
+async fn sftp_put(
+    app: AppHandle,
+    host: String,
+    local: String,
+    remote: String,
+) -> Result<u64, String> {
     let h = host_by_key(&host)?;
-    let n = sftp::upload(&h, &local, &remote).await.map_err(|e| e.to_string())?;
+    let n = sftp::upload(&h, &local, &remote)
+        .await
+        .map_err(|e| e.to_string())?;
     audit::human("界面·SFTP 上传", Some(format!("{local} → {host}:{remote}")));
-    let _ = app.emit(EVENT_SFTP, serde_json::json!({ "host": host, "changed": remote }));
+    let _ = app.emit(
+        EVENT_SFTP,
+        serde_json::json!({ "host": host, "changed": remote }),
+    );
     Ok(n)
 }
 
 #[tauri::command]
 async fn sftp_get(host: String, remote: String, local: String) -> Result<u64, String> {
     let h = host_by_key(&host)?;
-    let n = sftp::download(&h, &remote, &local).await.map_err(|e| e.to_string())?;
+    let n = sftp::download(&h, &remote, &local)
+        .await
+        .map_err(|e| e.to_string())?;
     audit::human("界面·SFTP 下载", Some(format!("{host}:{remote} → {local}")));
     Ok(n)
 }
 
 /// Finder 拖进来的文件在 WKWebView 里拿不到本地路径，前端读完内容转字节数组传过来。
 #[tauri::command]
-async fn sftp_put_bytes(app: AppHandle, host: String, remote: String, bytes: Vec<u8>) -> Result<u64, String> {
+async fn sftp_put_bytes(
+    app: AppHandle,
+    host: String,
+    remote: String,
+    bytes: Vec<u8>,
+) -> Result<u64, String> {
     let h = host_by_key(&host)?;
     let sftp = ssh::sftp_connect(&h).await.map_err(|e| e.to_string())?;
     use tokio::io::AsyncWriteExt;
@@ -827,7 +986,10 @@ async fn sftp_put_bytes(app: AppHandle, host: String, remote: String, bytes: Vec
     f.write_all(&bytes).await.map_err(|e| e.to_string())?;
     f.flush().await.map_err(|e| e.to_string())?;
     audit::human("界面·SFTP 上传（拖拽）", Some(format!("{host}:{remote}")));
-    let _ = app.emit(EVENT_SFTP, serde_json::json!({ "host": host, "changed": remote }));
+    let _ = app.emit(
+        EVENT_SFTP,
+        serde_json::json!({ "host": host, "changed": remote }),
+    );
     Ok(bytes.len() as u64)
 }
 
@@ -836,16 +998,24 @@ async fn sftp_rm(app: AppHandle, host: String, path: String) -> Result<String, S
     let h = host_by_key(&host)?;
     let msg = sftp::remove(&h, &path).await.map_err(|e| e.to_string())?;
     audit::human("界面·SFTP 删除", Some(format!("{host}:{path}")));
-    let _ = app.emit(EVENT_SFTP, serde_json::json!({ "host": host, "changed": path }));
+    let _ = app.emit(
+        EVENT_SFTP,
+        serde_json::json!({ "host": host, "changed": path }),
+    );
     Ok(msg)
 }
 
 #[tauri::command]
 async fn sftp_mv(app: AppHandle, host: String, from: String, to: String) -> Result<String, String> {
     let h = host_by_key(&host)?;
-    let msg = sftp::rename(&h, &from, &to).await.map_err(|e| e.to_string())?;
+    let msg = sftp::rename(&h, &from, &to)
+        .await
+        .map_err(|e| e.to_string())?;
     audit::human("界面·SFTP 移动", Some(format!("{host}:{from} → {to}")));
-    let _ = app.emit(EVENT_SFTP, serde_json::json!({ "host": host, "changed": to }));
+    let _ = app.emit(
+        EVENT_SFTP,
+        serde_json::json!({ "host": host, "changed": to }),
+    );
     Ok(msg)
 }
 
@@ -854,17 +1024,30 @@ async fn sftp_mkdir_cmd(app: AppHandle, host: String, path: String) -> Result<St
     let h = host_by_key(&host)?;
     let msg = sftp::mkdir(&h, &path).await.map_err(|e| e.to_string())?;
     audit::human("界面·SFTP 新建目录", Some(format!("{host}:{path}")));
-    let _ = app.emit(EVENT_SFTP, serde_json::json!({ "host": host, "changed": path }));
+    let _ = app.emit(
+        EVENT_SFTP,
+        serde_json::json!({ "host": host, "changed": path }),
+    );
     Ok(msg)
 }
 
 /// 远端复制。SFTP 协议本身没有 copy，走「下载到临时文件再上传」。
 #[tauri::command]
-async fn sftp_copy(app: AppHandle, host: String, from: String, to: String) -> Result<String, String> {
+async fn sftp_copy(
+    app: AppHandle,
+    host: String,
+    from: String,
+    to: String,
+) -> Result<String, String> {
     let h = host_by_key(&host)?;
-    let msg = sftp::copy_remote(&h, &from, &to).await.map_err(|e| e.to_string())?;
+    let msg = sftp::copy_remote(&h, &from, &to)
+        .await
+        .map_err(|e| e.to_string())?;
     audit::human("界面·SFTP 复制", Some(format!("{host}:{from} → {to}")));
-    let _ = app.emit(EVENT_SFTP, serde_json::json!({ "host": host, "changed": to }));
+    let _ = app.emit(
+        EVENT_SFTP,
+        serde_json::json!({ "host": host, "changed": to }),
+    );
     Ok(msg)
 }
 
@@ -969,7 +1152,10 @@ pub fn import_ssh_config_inner(app: &AppHandle, aliases: Vec<String>) -> Result<
     let mut store = hosts::HostStore::load();
     let mut n = 0usize;
 
-    for e in candidates.into_iter().filter(|e| aliases.contains(&e.alias)) {
+    for e in candidates
+        .into_iter()
+        .filter(|e| aliases.contains(&e.alias))
+    {
         let auth = if e.identity.is_some() { "key" } else { "agent" };
         hosts::upsert_host(
             &mut store,
@@ -1047,6 +1233,7 @@ pub fn run() {
             list_keys_cmd,
             import_key_file,
             import_key_text,
+            set_key_passphrase,
             generate_key_cmd,
             rename_key_cmd,
             fix_key_permissions,

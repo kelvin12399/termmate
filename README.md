@@ -13,7 +13,7 @@ AI 通过 MCP 直接操作这个终端：开标签页、分屏、跑命令、读
 - **终端**：多标签页、上下/左右分屏、标签改名，基于 `portable-pty` + `alacritty_terminal` 做唯一 VT 解析
 - **SSH**：私钥 / 密码 / ssh-agent 三种认证；支持 `IdentityAgent`（含 1Password SSH Agent）
 - **主机密钥校验**：读 `~/.ssh/known_hosts` 和代敲自己的库；首次连接 TOFU 记录，指纹变更**硬拒**，支持 `@revoked` / `@cert-authority` / 哈希行 / 通配符
-- **密钥库**：`~/.daiqiao/keys/`（目录 700、文件 600）；从 `~/.ssh` 引用、导入文件、粘贴导入、系统 `ssh-keygen` 生成
+- **密钥库**：`~/.daiqiao/keys/`（目录 700、文件 600）；从 `~/.ssh` 引用、导入文件、粘贴导入、系统 `ssh-keygen` 生成；**带口令的私钥可在导入时输口令，口令存 macOS 钥匙串，连接时自动解锁**；侧栏有独立「密钥库」入口，可统一管理已有密钥
 - **SFTP 资源管理器**：列目录、上传、下载、重命名、移动、复制、删除、新建目录；多选、剪贴板、拖拽移动、从 Finder 拖入上传
 - **终端文本选择**：拖选、⌘C 复制、⌘A 全选、右键复制/粘贴；中文与 emoji 按真实终端格子提取，不会错列
 - **配置备份 / 迁移**：导出全部主机、分组和密钥引用为 `.dqconfig`；默认不含凭据，勾选后以 AES-256-GCM + PBKDF2-HMAC-SHA256 加密私钥和主机密码，另一台 Mac 可导入恢复
@@ -79,12 +79,12 @@ url = "http://127.0.0.1:7391/mcp"
 
 stdio 桥只是把 JSON-RPC 转发给运行中的代敲，所以**代敲必须开着** —— 工具操作的就是那个窗口里的会话。
 
-## MCP 工具（45 个）
+## MCP 工具（46 个）
 
 - **会话/终端**：`session_list` `session_new` `session_close` `session_rename` `session_activate` `pane_split` `exec` `send_input` `read_screen` `session_info`
 - **主机**：`host_list` `host_add` `host_update` `host_remove` `host_connect` `host_exec` `host_test_connect` `ssh_config_scan` `ssh_config_import` `host_key_list` `host_key_forget`
 - **SFTP**：`sftp_list` `sftp_upload` `sftp_download` `sftp_remove` `sftp_rename` `sftp_mkdir` `sftp_copy` `sftp_open_candidates` `sftp_open_with`
-- **密钥**：`key_list` `key_import` `key_generate` `key_public` `key_rename` `key_fix_permissions` `key_remove`
+- **密钥**：`key_list` `key_import` `key_generate` `key_public` `key_rename` `key_fix_permissions` `key_remove` `key_passphrase_forget`
 - **自省/审计/外观**：`audit_list` `agent_status` `mcp_status` `appearance_get` `appearance_set`
 - **配置迁移**：`config_export` `config_inspect` `config_import`（MCP 导出默认不含凭据；带凭据的加密导出请在界面完成）
 
@@ -119,7 +119,8 @@ visible terminal — sessions, commands, SFTP, hosts and keys — while the huma
 and can take over at any time.
 
 Credentials never reach the AI: it only sees key names, fingerprints, and whether a password is stored
-(macOS Keychain). Every AI command is audited to `~/.daiqiao/audit.jsonl`.
+(macOS Keychain). Encrypted private keys are supported — the passphrase is saved in the macOS Keychain
+and never exposed to the AI. Every AI command is audited to `~/.daiqiao/audit.jsonl`.
 
 Build: `cd app && npm install && npm run tauri dev`. MCP: `http://127.0.0.1:7391/mcp`, or the stdio
 bridge at `Contents/MacOS/daiqiao-mcp` while the app is running. MIT licensed.

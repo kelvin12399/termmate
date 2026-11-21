@@ -239,14 +239,43 @@ impl client::Handler for ClientHandler {
 
 pub type SshHandle = client::Handle<ClientHandler>;
 
+/// key 认证要用私钥时从这里加载：带口令的私钥从钥匙串取口令解锁。
+///
+/// 口令内容只在这里用一下就丢，不进日志、不回给 AI —— AI 侧只能看到
+/// 密钥库里的 `passphrase_saved` 布尔值。没存口令 / 口令不对都在这里
+/// 翻译成人能看懂的话，别把 russh 那句 "The key is encrypted" 直接邑给人。
+fn load_host_key(host: &Host) -> anyhow::Result<russh::keys::PrivateKey> {
+    // key_id 优先查密钥库；没有就退回旧的直接路径字段（兼容老主机）
+    let key_path = crate::hosts::resolve_key_path(host)
+        .ok_or_else(|| anyhow::anyhow!("这台主机没有配置密钥"))?;
+    // 钥匙串里的口令按密钥 id 存：主机配置给了 key_id 就用它；老配置只有
+    // 路径的，按路径算 id —— 和密钥库列表里的 id 是同一个
+    let key_id = host
+        .key_id
+        .clone()
+        .unwrap_or_else(|| crate::keys::key_id(std::path::Path::new(&key_path)));
+    let passphrase =
+        crate::keychain::get_key_passphrase(&key_id).map_err(|e| anyhow::anyhow!("{e}"))?;
+    match load_secret_key(&key_path, passphrase.as_deref()) {
+        Ok(key) => Ok(key),
+        // 带口令的私钥、钥匙串里没存口令 —— 指到密钥库去存
+        Err(russh::keys::Error::KeyIsEncrypted) => anyhow::bail!(
+            "这把私钥带口令，但钥匙串里还没存它的口令 —— 打开代敲的「密钥库」\
+             选中这把密钥，把口令存进去再连（口令只进钥匙串，不经过 AI）"
+        ),
+        Err(e) if passphrase.is_some() => anyhow::bail!(
+            "钥匙串里存的口令解不开这把私钥（口令改了？密钥文件换过？）——\
+             去代敲的「密钥库」重新存一次口令: {e}"
+        ),
+        Err(e) => anyhow::bail!("读取私钥失败（{key_path}）: {e}"),
+    }
+}
+
 /// 统一的认证入口：shell 会话和 SFTP 都走这里，凭证只在内存里过一遍
 pub async fn authenticate(session: &mut SshHandle, host: &Host) -> anyhow::Result<()> {
     match host.auth.as_str() {
         "key" => {
-            // key_id 优先查密钥库；没有就退回旧的直接路径字段（兼容老主机）
-            let key_path = crate::hosts::resolve_key_path(host)
-                .ok_or_else(|| anyhow::anyhow!("这台主机没有配置密钥"))?;
-            let key = load_secret_key(&key_path, None)?;
+            let key = load_host_key(host)?;
             let hash = session.best_supported_rsa_hash().await?.flatten();
             let res = session
                 .authenticate_publickey(
@@ -269,17 +298,13 @@ pub async fn authenticate(session: &mut SshHandle, host: &Host) -> anyhow::Resul
                         "这台主机还没存密码：在代敲的主机编辑里存进钥匙串（密码不经过 AI）"
                     )
                 })?;
-            let res = session
-                .authenticate_password(host.user.clone(), pw)
-                .await?;
+            let res = session.authenticate_password(host.user.clone(), pw).await?;
             if !res.success() {
                 anyhow::bail!("密码认证被拒绝（密码可能不对，或服务器禁用了密码登录）");
             }
             Ok(())
         }
-        "agent" => {
-            authenticate_with_agent(session, host).await
-        }
+        "agent" => authenticate_with_agent(session, host).await,
         other => anyhow::bail!("不认识的认证方式: {other}（支持 key / password / agent）"),
     }
 }
@@ -349,10 +374,7 @@ async fn authenticate_with_agent(session: &mut SshHandle, host: &Host) -> anyhow
             }
         };
         // RSA 才需要协商 hash；别的算法传 None
-        let hash = if matches!(
-            key.algorithm(),
-            russh::keys::Algorithm::Rsa { .. }
-        ) {
+        let hash = if matches!(key.algorithm(), russh::keys::Algorithm::Rsa { .. }) {
             rsa_hash
         } else {
             None
@@ -364,9 +386,7 @@ async fn authenticate_with_agent(session: &mut SshHandle, host: &Host) -> anyhow
         match res {
             Ok(r) if r.success() => {
                 let comment = match id {
-                    russh::keys::agent::AgentIdentity::PublicKey { comment, .. } => {
-                        comment.clone()
-                    }
+                    russh::keys::agent::AgentIdentity::PublicKey { comment, .. } => comment.clone(),
                     _ => String::new(),
                 };
                 log::info!("agent 密钥认证成功（{tried}/{})「{comment}」", ids.len());
@@ -553,4 +573,145 @@ where
         .disconnect(russh::Disconnect::ByApplication, "", "en")
         .await;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    //! load_host_key 的口令链路：没存口令 / 存对口令 / 存错口令 / 清掉口令 / 老配置。
+    //! 不真连服务器 —— 连接 handshake 之外的那半段在这里单独验证。
+
+    use super::*;
+    use crate::hosts::Host;
+
+    // HOME 是进程级全局，沙盒期间拿锁挡住别的测试（配合 RUST_TEST_THREADS=1）
+    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct Sandbox {
+        dir: std::path::PathBuf,
+        old: Option<String>,
+        _guard: std::sync::MutexGuard<'static, ()>,
+    }
+
+    impl Sandbox {
+        fn new(tag: &str) -> Self {
+            let guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let dir = std::env::temp_dir().join(format!("dq-ssh-key-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(&dir).unwrap();
+            let old = std::env::var("HOME").ok();
+            std::env::set_var("HOME", &dir);
+            crate::keychain::clear();
+            Self {
+                dir,
+                old,
+                _guard: guard,
+            }
+        }
+
+        /// 造一把带口令的私钥放进沙盒的代敲密钥库，返回 (密钥id, 路径)
+        fn encrypted_vault_key(&self, stem: &str, passphrase: &str) -> (String, String) {
+            let vault = self.dir.join(".daiqiao/keys");
+            std::fs::create_dir_all(&vault).unwrap();
+            let path = vault.join(stem);
+            let st = std::process::Command::new("ssh-keygen")
+                .args(["-t", "ed25519", "-N", passphrase, "-q", "-C", "dq-ssh-test"])
+                .arg("-f")
+                .arg(&path)
+                .status()
+                .expect("跑得动 ssh-keygen");
+            assert!(st.success(), "ssh-keygen 生成失败");
+            (
+                crate::keys::key_id(&path),
+                path.to_string_lossy().into_owned(),
+            )
+        }
+    }
+
+    impl Drop for Sandbox {
+        fn drop(&mut self) {
+            match &self.old {
+                Some(h) => std::env::set_var("HOME", h),
+                None => std::env::remove_var("HOME"),
+            }
+            crate::keychain::clear();
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn host_with_key(key_id: Option<String>, key_path: Option<String>) -> Host {
+        Host {
+            id: "h1".into(),
+            name: "测试机".into(),
+            hostname: "example.com".into(),
+            port: 22,
+            user: "deploy".into(),
+            auth: "key".into(),
+            key_id,
+            key_path,
+            tags: vec![],
+            group: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn 带口令私钥_没存口令时指到密钥库() {
+        let sb = Sandbox::new("no-pw");
+        let (kid, _path) = sb.encrypted_vault_key("enc", "正确的口令");
+        let host = host_with_key(Some(kid), None);
+        let err = load_host_key(&host).unwrap_err().to_string();
+        assert!(err.contains("密钥库"), "错误要指到密钥库: {err}");
+        assert!(!err.contains("正确的口令"), "错误里绝不能带口令内容");
+    }
+
+    #[test]
+    fn 带口令私钥_存了口令就能加载() {
+        let sb = Sandbox::new("with-pw");
+        let (kid, _path) = sb.encrypted_vault_key("enc", "解锁口令123");
+        crate::keychain::set_key_passphrase(&kid, "解锁口令123").unwrap();
+        let host = host_with_key(Some(kid), None);
+        load_host_key(&host).expect("存了口令就该能加载");
+    }
+
+    #[test]
+    fn 带口令私钥_存的口令错了要说人话() {
+        let sb = Sandbox::new("bad-pw");
+        let (kid, _path) = sb.encrypted_vault_key("enc", "真口令");
+        crate::keychain::set_key_passphrase(&kid, "错口令").unwrap();
+        let host = host_with_key(Some(kid), None);
+        let err = load_host_key(&host).unwrap_err().to_string();
+        assert!(
+            err.contains("重新存") || err.contains("密钥库"),
+            "口令不对要指回密钥库重存: {err}"
+        );
+        assert!(!err.contains("真口令"), "错误里不能泄露真口令");
+    }
+
+    #[test]
+    fn 清掉口令后又指回密钥库() {
+        let sb = Sandbox::new("clear-pw");
+        let (kid, _path) = sb.encrypted_vault_key("enc", "又一把口令");
+        crate::keychain::set_key_passphrase(&kid, "又一把口令").unwrap();
+        let host = host_with_key(Some(kid.clone()), None);
+        load_host_key(&host).expect("先确认能加载");
+        crate::keychain::delete_key_passphrase(&kid).unwrap();
+        let err = load_host_key(&host).unwrap_err().to_string();
+        assert!(err.contains("密钥库"), "清掉口令后错误要指回密钥库: {err}");
+    }
+
+    #[test]
+    fn 老配置只给路径_按路径算id也能对上口令() {
+        let sb = Sandbox::new("legacy-path");
+        let (_kid, path) = sb.encrypted_vault_key("enc", "老配置口令");
+        let host = host_with_key(None, Some(path.clone()));
+        let err = load_host_key(&host).unwrap_err().to_string();
+        assert!(
+            err.contains("密钥库"),
+            "老配置没存口令也要指到密钥库: {err}"
+        );
+        // 按路径算出的 id 和密钥库列表用的是同一个 —— 存上口令就该解锁
+        let kid = crate::keys::key_id(std::path::Path::new(&path));
+        crate::keychain::set_key_passphrase(&kid, "老配置口令").unwrap();
+        load_host_key(&host).expect("老配置 + 路径算的 id 也该能解锁");
+    }
 }

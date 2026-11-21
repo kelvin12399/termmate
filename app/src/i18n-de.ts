@@ -192,8 +192,10 @@ export const DE: Record<string, string> = {
   "这个私钥文件权限太松，SSH 会拒绝用它":
     "Die Dateirechte dieses privaten Schlüssels sind zu offen; SSH wird ihn ablehnen",
   "改成 600": "Auf 600 setzen",
-  "这把密钥有口令，连接时需要解锁（钥匙串还没做）":
-    "Dieser Schlüssel ist durch eine Passphrase geschützt und muss beim Verbinden entsperrt werden (Schlüsselbund-Unterstützung ist noch nicht implementiert)",
+  "这把密钥有口令，去密钥库存一下":
+    "Dieser Schlüssel hat eine Passphrase — hinterlege sie im Schlüsseltresor",
+  口令已存进钥匙串: "Passphrase ist im Schlüsselbund gespeichert",
+  去存口令: "Passphrase speichern",
   "另外 {count} 台主机也在用这把密钥：{names}":
     "{count} weiterer Host verwendet diesen Schlüssel ebenfalls: {names}",
   "另外共有 {count} 台主机也在用这把密钥：{names}":
@@ -297,7 +299,14 @@ export const DE: Record<string, string> = {
   "代敲库（~/.daiqiao/keys，目录 700）": "TermMate-Tresor (~/.daiqiao/keys, Verzeichnisrechte 700)",
   "{count} 把": "{count} Schlüssel",
   "共 {count} 把": "{count} Schlüssel",
-  "有口令": "Passphrase-geschützt",
+  存口令: "Passphrase speichern",
+  已存口令: "Passphrase gespeichert",
+  未存口令: "Passphrase nicht gespeichert",
+  "口令（如果有）": "Passphrase (falls vorhanden)",
+  口令是空的: "Die Passphrase ist leer",
+  "清掉这把密钥存在钥匙串里的口令？": "Die Passphrase dieses Schlüssels aus dem Schlüsselbund entfernen?",
+  "改名、删除、复制公钥、存口令，都在这里。":
+    "Umbenennen, Löschen, öffentlichen Schlüssel kopieren oder Passphrasen speichern — alles hier.",
   "权限太松": "Rechte zu offen",
   "{count} 台在用": "Von {count} Host verwendet",
   "共 {count} 台在用": "Von {count} Hosts verwendet",

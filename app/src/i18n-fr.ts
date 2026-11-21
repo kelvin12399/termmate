@@ -192,8 +192,10 @@ export const FR: Record<string, string> = {
   "这个私钥文件权限太松，SSH 会拒绝用它":
     "Les permissions de ce fichier de clé privée sont trop ouvertes ; SSH refusera de l’utiliser",
   "改成 600": "Définir les permissions sur 600",
-  "这把密钥有口令，连接时需要解锁（钥匙串还没做）":
-    "Cette clé est protégée par une phrase secrète et devra être déverrouillée lors de la connexion (la prise en charge du Trousseau n’est pas encore disponible)",
+  "这把密钥有口令，去密钥库存一下":
+    "Cette clé est protégée par une phrase secrète — enregistrez-la dans le coffre de clés",
+  口令已存进钥匙串: "La phrase secrète est enregistrée dans le trousseau",
+  去存口令: "Enregistrer la phrase secrète",
   "另外 {count} 台主机也在用这把密钥：{names}":
     "{count} autre hôte utilise aussi cette clé : {names}",
   "另外共有 {count} 台主机也在用这把密钥：{names}":
@@ -297,7 +299,14 @@ export const FR: Record<string, string> = {
   "代敲库（~/.daiqiao/keys，目录 700）": "Coffre de clés TermMate (~/.daiqiao/keys, permissions du dossier 700)",
   "{count} 把": "{count} clé",
   "共 {count} 把": "{count} clés",
-  有口令: "Protégée par phrase secrète",
+  存口令: "Enregistrer la phrase secrète",
+  已存口令: "Phrase secrète enregistrée",
+  未存口令: "Phrase secrète non enregistrée",
+  "口令（如果有）": "Phrase secrète (si définie)",
+  口令是空的: "La phrase secrète est vide",
+  "清掉这把密钥存在钥匙串里的口令？": "Supprimer du trousseau la phrase secrète de cette clé ?",
+  "改名、删除、复制公钥、存口令，都在这里。":
+    "Renommer, supprimer, copier la clé publique ou enregistrer les phrases secrètes — tout est ici.",
   权限太松: "Permissions trop ouvertes",
   "{count} 台在用": "{count} hôte l’utilise",
   "共 {count} 台在用": "{count} hôtes l’utilisent",

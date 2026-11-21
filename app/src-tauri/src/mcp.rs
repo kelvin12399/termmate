@@ -419,12 +419,12 @@ fn tool_defs() -> Vec<Value> {
         }),
         json!({
             "name": "key_list",
-            "description": "列出密钥库里的所有 SSH 密钥：~/.ssh 里扫到的 + 代敲库里的。给出算法、指纹、有没有口令、文件权限是否安全、被哪些主机引用。**拿不到私钥内容**。",
+            "description": "列出密钥库里的所有 SSH 密钥：~/.ssh 里扫到的 + 代敲库里的。给出算法、指纹、有没有口令、口令是否已存进钥匙串、文件权限是否安全、被哪些主机引用。**拿不到私钥内容**。",
             "inputSchema": { "type": "object", "properties": {} }
         }),
         json!({
             "name": "key_import",
-            "description": "把一把私钥导入代敲库（~/.daiqiao/keys/，目录 700、文件 600）。两种给法：path=磁盘上的私钥文件，或 text=私钥文本。导入前会校验能不能解析。",
+            "description": "把一把私钥导入代敲库（~/.daiqiao/keys/，目录 700、文件 600）。两种给法：path=磁盘上的私钥文件，或 text=私钥文本。带口令的私钥也能导入，但口令不经过 AI，连接前请在界面里存一次。",
             "inputSchema": {
                 "type": "object",
                 "properties": {
@@ -479,6 +479,15 @@ fn tool_defs() -> Vec<Value> {
         json!({
             "name": "key_remove",
             "description": "从代敲库里删掉一把密钥（文件一起删）。~/.ssh 里的密钥代敲只读不碰，删不了。",
+            "inputSchema": {
+                "type": "object",
+                "properties": { "key": { "type": "string", "description": "密钥 id 或名字" } },
+                "required": ["key"]
+            }
+        }),
+        json!({
+            "name": "key_passphrase_forget",
+            "description": "清掉一把密钥存在 macOS 钥匙串里的解锁口令（只清不读，口令本身永远不经过 AI）。带口令的私钥连接时要用；存口令请在界面里做。",
             "inputSchema": {
                 "type": "object",
                 "properties": { "key": { "type": "string", "description": "密钥 id 或名字" } },
@@ -1066,7 +1075,15 @@ fn tool_key_list() -> Result<String, String> {
             k.algo,
             k.fingerprint,
             where_,
-            if k.encrypted { "  有口令" } else { "" },
+            if k.encrypted {
+                if k.passphrase_saved {
+                    "  有口令·已存"
+                } else {
+                    "  有口令·未存"
+                }
+            } else {
+                ""
+            },
             if k.perm_ok { "" } else { "  ⚠权限太松(需 key_fix_permissions)" },
             if k.used_by.is_empty() {
                 String::new()
@@ -1082,7 +1099,9 @@ fn tool_key_list() -> Result<String, String> {
 fn tool_key_import(app: &AppHandle, args: &Value) -> Result<String, String> {
     let name = args.get("name").and_then(|v| v.as_str());
     let info = if let Some(text) = args.get("text").and_then(|v| v.as_str()) {
-        crate::keys::import_text(text, name).map_err(|e| e.to_string())?
+        // MCP 这边没法当场向人要口令，走 raw 导入：带口令的也能入库，
+        // 连接前去密钥库存口令（口令不经过 AI）
+        crate::keys::import_text_raw(text, name).map_err(|e| e.to_string())?
     } else if let Some(path) = args.get("path").and_then(|v| v.as_str()) {
         crate::keys::import_file(std::path::Path::new(path), name).map_err(|e| e.to_string())?
     } else {
@@ -1096,7 +1115,7 @@ fn tool_key_import(app: &AppHandle, args: &Value) -> Result<String, String> {
         info.fingerprint,
         info.path,
         if info.encrypted {
-            "\n这把密钥有口令，连接时需要先解锁。"
+            "\n这把密钥有口令，连接时需要先解锁。AI 不能读也不能存口令；请在界面里存一次。"
         } else {
             ""
         }
@@ -1148,6 +1167,24 @@ fn tool_key_fix_permissions(app: &AppHandle, args: &Value) -> Result<String, Str
     crate::keys::fix_permissions(&info.id, &used).map_err(|e| e.to_string())?;
     crate::emit_keys(app);
     Ok(format!("已把「{}」的文件权限改成 600", info.name))
+}
+
+fn tool_key_passphrase_forget(app: &AppHandle, args: &Value) -> Result<String, String> {
+    let key = args
+        .get("key")
+        .and_then(|v| v.as_str())
+        .ok_or("缺少 key")?;
+    let used = hosts_by_key();
+    let info = crate::keys::find_key(key, &used)
+        .ok_or_else(|| format!("密钥库里找不到「{key}」"))?;
+    let was_saved = info.passphrase_saved;
+    crate::keychain::delete_key_passphrase(&info.id).map_err(|e| e.to_string())?;
+    crate::emit_keys(app);
+    Ok(if was_saved {
+        format!("已清掉「{}」存在钥匙串里的口令", info.name)
+    } else {
+        format!("「{}」本来就没存口令", info.name)
+    })
 }
 
 fn tool_key_remove(app: &AppHandle, args: &Value) -> Result<String, String> {
@@ -1262,7 +1299,12 @@ fn audit_detail(name: &str, args: &Value) -> Option<String> {
             let h = if s("host").is_empty() { s("name") } else { s("host") };
             Some(format!("主机「{h}」"))
         }
-        "key_import" | "key_generate" | "key_remove" | "key_rename" | "key_fix_permissions" => {
+        "key_import"
+            | "key_generate"
+            | "key_remove"
+            | "key_rename"
+            | "key_fix_permissions"
+            | "key_passphrase_forget" => {
             let k = if s("key").is_empty() { s("name") } else { s("key") };
             Some(format!("密钥「{k}」"))
         }
@@ -1319,6 +1361,7 @@ async fn call_tool_body(app: &AppHandle, name: &str, args: &Value) -> Result<Val
         "key_rename" => tool_key_rename(app, &args)?,
         "key_fix_permissions" => tool_key_fix_permissions(app, &args)?,
         "key_remove" => tool_key_remove(app, &args)?,
+        "key_passphrase_forget" => tool_key_passphrase_forget(app, &args)?,
         "host_test_connect" => tool_host_test_connect(&args).await?,
         "audit_list" => tool_audit_list(&args)?,
         "appearance_get" => tool_appearance_get()?,

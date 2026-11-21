@@ -22,8 +22,10 @@ export const SIDEBAR_EN: Record<string, string> = {
   "这个私钥文件权限太松，SSH 会拒绝用它":
     "This private key file's permissions are too open; SSH will refuse to use it",
   "改成 600": "Set mode to 600",
-  "这把密钥有口令，连接时需要解锁（钥匙串还没做）":
-    "This key is passphrase-protected and must be unlocked when connecting (Keychain support is not implemented yet)",
+  "这把密钥有口令，去密钥库存一下":
+    "This key has a passphrase — store it in the key vault",
+  口令已存进钥匙串: "Passphrase saved to Keychain",
+  去存口令: "Store passphrase",
   "另外 {count} 台主机也在用这把密钥：{names}":
     "{count} other host is also using this key: {names}",
   "另外共有 {count} 台主机也在用这把密钥：{names}":
@@ -98,8 +100,10 @@ export const SIDEBAR_JA: Record<string, string> = {
   "这个私钥文件权限太松，SSH 会拒绝用它":
     "秘密鍵ファイルの権限が緩すぎるため、SSH がこの鍵を拒否します",
   "改成 600": "権限を 600 に変更",
-  "这把密钥有口令，连接时需要解锁（钥匙串还没做）":
-    "この鍵にはパスフレーズがあります。接続時にロック解除が必要です（キーチェーン連携は未対応）",
+  "这把密钥有口令，去密钥库存一下":
+    "この鍵にはパスフレーズがあります。キーボールトに保存してください",
+  口令已存进钥匙串: "パスフレーズはキーチェーンに保存しました",
+  去存口令: "パスフレーズを保存",
   "另外 {count} 台主机也在用这把密钥：{names}":
     "この鍵は他の {count} 台のホストでも使用されています：{names}",
   "另外共有 {count} 台主机也在用这把密钥：{names}":

@@ -118,6 +118,15 @@ const BASE_EN: Record<string, string> = {
     "Generated with the system ssh-keygen. The private key is stored in TermMate's vault with mode 600 and no passphrase (use Paste & import for passphrase-protected keys).",
   "AI 能列密钥、能指定用哪把，拿不到私钥内容。": "AI can list and select keys, but cannot read private key contents.",
   用这把: "Use this key",
+  "口令（如果有）": "Passphrase (if any)",
+  存口令: "Store passphrase",
+  已存口令: "Passphrase saved",
+  未存口令: "No passphrase saved",
+  口令已存进钥匙串: "Passphrase saved to Keychain",
+  口令是空的: "Passphrase is empty",
+  "清掉这把密钥存在钥匙串里的口令？": "Remove this key's passphrase from Keychain?",
+  "改名、删除、复制公钥、存口令，都在这里。":
+    "Rename, delete, copy public key, or store passphrases — all here.",
   "双击进目录 · ⌘C/⌘X/⌘V · 拖到文件夹=移动 · 右键打开方式":
     "Double-click to open · ⌘C/⌘X/⌘V · Drop on folder to move · Right-click to open with",
   设置: "Settings",
@@ -260,6 +269,15 @@ const BASE_JA: Record<string, string> = {
     "OS の ssh-keygen で生成します。秘密鍵は権限 600 でキーボールトに保存し、パスフレーズは設定しません（必要なら貼り付けて読み込んでください）。",
   "AI 能列密钥、能指定用哪把，拿不到私钥内容。": "AI は鍵の一覧と選択はできますが、秘密鍵の内容は取得できません。",
   用这把: "この鍵を使用",
+  "口令（如果有）": "パスフレーズ（あれば）",
+  存口令: "パスフレーズを保存",
+  已存口令: "パスフレーズ保存済み",
+  未存口令: "パスフレーズ未保存",
+  口令已存进钥匙串: "パスフレーズはキーチェーンに保存しました",
+  口令是空的: "パスフレーズが空です",
+  "清掉这把密钥存在钥匙串里的口令？": "この鍵のパスフレーズをキーチェーンから削除しますか？",
+  "改名、删除、复制公钥、存口令，都在这里。":
+    "名前の変更、削除、公開鍵のコピー、パスフレーズの保存はここで行えます。",
   "双击进目录 · ⌘C/⌘X/⌘V · 拖到文件夹=移动 · 右键打开方式":
     "ダブルクリックで開く · ⌘C/⌘X/⌘V · フォルダーへドロップで移動 · 右クリックでアプリから開く",
   设置: "設定",

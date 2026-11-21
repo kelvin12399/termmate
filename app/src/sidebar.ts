@@ -98,6 +98,7 @@ interface Els {
 
 /** 所有浮层，从上到下。右键菜单浮在面板之上，所以排最前。 */
 const OVERLAYS = [
+  "key-pass",
   "ctx-menu",
   "keyvault",
   "drawer",
@@ -167,7 +168,11 @@ export class Sidebar {
     private onViewChange: (v: SideView) => void,
     private onSftp: (h: Host) => void
   ) {
-    this.keyVault = new KeyVault((msg) => this.toast(msg));
+    this.keyVault = new KeyVault((msg) => this.toast(msg), () => void this.syncPickedKey());
+    // 侧栏顶部的独立密钥库入口：管理模式打开，不绑在主机抽屉上
+    document
+      .getElementById("side-keyvault")
+      ?.addEventListener("click", () => void this.keyVault.manage());
     this.groupCombo = new GroupCombo(this.els.fGroup, () => {
       const names = new Set<string>();
       for (const h of this.hosts) {
@@ -640,17 +645,31 @@ export class Sidebar {
     this.els.keyFp.textContent = `${k.algo} · ${k.fingerprint}`;
 
     // 权限太松比有口令更要紧（SSH 会直接拒），所以优先报它
+    const alertUse = this.els.keyAlert.querySelector("use");
     if (!k.perm_ok) {
+      this.els.keyAlert.classList.remove("ok");
+      if (alertUse) alertUse.setAttribute("href", "#i-lock");
       this.els.keyAlert.hidden = false;
       this.els.keyAlertText.textContent = t("这个私钥文件权限太松，SSH 会拒绝用它");
       this.els.keyAlertAct.hidden = false;
       this.els.keyAlertAct.textContent = t("改成 600");
       this.els.keyAlertAct.onclick = () => void this.fixKeyPerm(k);
     } else if (k.encrypted) {
+      // 带口令的密钥：看口令存没存进钥匙串，没存就引去密钥库
+      const saved = !!k.passphrase_saved;
+      this.els.keyAlert.classList.toggle("ok", saved);
+      if (alertUse) alertUse.setAttribute("href", saved ? "#i-circle-check" : "#i-lock");
       this.els.keyAlert.hidden = false;
-      this.els.keyAlertText.textContent = t("这把密钥有口令，连接时需要解锁（钥匙串还没做）");
-      this.els.keyAlertAct.hidden = true;
-      this.els.keyAlertAct.onclick = null;
+      if (saved) {
+        this.els.keyAlertText.textContent = t("口令已存进钥匙串");
+        this.els.keyAlertAct.hidden = true;
+        this.els.keyAlertAct.onclick = null;
+      } else {
+        this.els.keyAlertText.textContent = t("这把密钥有口令，去密钥库存一下");
+        this.els.keyAlertAct.hidden = false;
+        this.els.keyAlertAct.textContent = t("去存口令");
+        this.els.keyAlertAct.onclick = () => void this.goStorePassphrase(k);
+      }
     }
 
     const others = k.used_by.filter((n) => n !== this.els.fName.value.trim());
@@ -677,6 +696,27 @@ export class Sidebar {
     this.els.drawer.hidden = false;
   }
 
+  /** 抽屉里的「去存口令」：打开密钥库（管理模式）并直接弹那把密钥的口令框 */
+  private async goStorePassphrase(k: KeyInfo): Promise<void> {
+    await this.keyVault.manage(k.id);
+    // 存完回来抽屉还得在、卡上的状态要新
+    this.els.drawer.hidden = false;
+    await this.syncPickedKey();
+  }
+
+  /** 密钥库里的改动（改名/删除/存口令…）同步回抽屉里那张卡 */
+  private async syncPickedKey(): Promise<void> {
+    const id = this.pickedKey?.id;
+    if (!id) return;
+    try {
+      const all = await invoke<KeyInfo[]>("list_keys_cmd");
+      this.pickedKey = all.find((x) => x.id === id) ?? null;
+    } catch {
+      // 拿不到就先保持现状，别把已经选好的卡冲掉
+    }
+    this.renderKeyField();
+  }
+
   private async importKeyFile(): Promise<void> {
     const { open: openFileDialog } = await import("@tauri-apps/plugin-dialog");
     let picked: string | null = null;
@@ -700,6 +740,7 @@ export class Sidebar {
       const info = await invoke<KeyInfo>("import_key_text", {
         text,
         name: f.name || null,
+        passphrase: null,
       });
       this.pickedKey = info;
       this.renderKeyField();

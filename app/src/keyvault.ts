@@ -19,6 +19,8 @@ export interface KeyInfo {
   algo: string;
   fingerprint: string;
   encrypted: boolean;
+  /** 口令有没有存进 macOS 钥匙串（口令本身永远不进前端） */
+  passphrase_saved: boolean;
   comment: string | null;
   perm_ok: boolean;
   public_key: string | null;
@@ -26,6 +28,8 @@ export interface KeyInfo {
 }
 
 type Tab = "pick" | "paste" | "gen";
+/** choose：为主机挑一把密钥；manage：纯管理，不回传 */
+type Mode = "choose" | "manage";
 
 function icon(name: string, cls = "i"): SVGSVGElement {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -49,6 +53,8 @@ export class KeyVault {
   private textEl: HTMLTextAreaElement;
   private parsedEl: HTMLElement;
   private pasteNameEl: HTMLInputElement;
+  /** 粘贴导入时的口令（带口令的私钥用；可选元素，缺了就当 null） */
+  private pastePassEl: HTMLInputElement | null;
 
   private genForm: HTMLElement;
   private genDone: HTMLElement;
@@ -57,7 +63,17 @@ export class KeyVault {
   private genFpEl: HTMLElement;
   private genPubEl: HTMLElement;
 
+  /** 口令对话框（可选元素，缺了就不出锁按钮） */
+  private passRoot: HTMLElement | null;
+  private passTitleEl: HTMLElement | null;
+  private passKeyEl: HTMLElement | null;
+  private passInput: HTMLInputElement | null;
+  private passSaveBtn: HTMLButtonElement | null;
+  private passClearBtn: HTMLButtonElement | null;
+  private passKey: KeyInfo | null = null;
+
   private tab: Tab = "pick";
+  private mode: Mode = "choose";
   private keys: KeyInfo[] = [];
   private selected: string | null = null;
   private generated: KeyInfo | null = null;
@@ -66,7 +82,11 @@ export class KeyVault {
   /** 弹层 DOM 在不在。不在就所有入口安静返回 */
   private ready = false;
 
-  constructor(private toast: (msg: string) => void) {
+  constructor(
+    private toast: (msg: string) => void,
+    /** 密钥库里的改动（改名/删除/存口令…）同步回调用方，比如抽屉里那张卡 */
+    private onChanged?: () => void
+  ) {
     this.root = document.getElementById("keyvault") as HTMLElement;
     this.tabsEl = document.getElementById("kv-tabs") as HTMLElement;
     this.pickEl = document.getElementById("kv-pick") as HTMLElement;
@@ -79,6 +99,7 @@ export class KeyVault {
     this.textEl = document.getElementById("kv-text") as HTMLTextAreaElement;
     this.parsedEl = document.getElementById("kv-parsed") as HTMLElement;
     this.pasteNameEl = document.getElementById("kv-paste-name") as HTMLInputElement;
+    this.pastePassEl = document.getElementById("kv-paste-pass") as HTMLInputElement | null;
 
     this.genForm = document.getElementById("kv-gen-form") as HTMLElement;
     this.genDone = document.getElementById("kv-gen-done") as HTMLElement;
@@ -86,6 +107,13 @@ export class KeyVault {
     this.genAlgoEl = document.getElementById("kv-gen-algo") as HTMLElement;
     this.genFpEl = document.getElementById("kv-gen-fp") as HTMLElement;
     this.genPubEl = document.getElementById("kv-gen-pub") as HTMLElement;
+
+    this.passRoot = document.getElementById("key-pass");
+    this.passTitleEl = document.getElementById("kp-title");
+    this.passKeyEl = document.getElementById("kp-key");
+    this.passInput = document.getElementById("kp-pass") as HTMLInputElement | null;
+    this.passSaveBtn = document.getElementById("kp-save") as HTMLButtonElement | null;
+    this.passClearBtn = document.getElementById("kp-clear") as HTMLButtonElement | null;
 
     // 弹层 DOM 不在就安静退场 —— 少个元素不该把整个应用的初始化链炸断
     if (!this.root || !this.tabsEl || !this.genAlgoEl || !this.pickEl) {
@@ -127,10 +155,26 @@ export class KeyVault {
     this.fileBtn.addEventListener("click", () => void this.pickFile());
     this.okBtn.addEventListener("click", () => void this.confirm());
 
+    // 口令对话框：保存 / 清除 / 取消 / 点背景关闭，回车保存
+    this.passInput?.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void this.savePassphrase();
+      }
+    });
+    this.passRoot?.addEventListener("mousedown", (e) => {
+      if (e.target === this.passRoot) this.closePass();
+    });
+    document.getElementById("kp-close")?.addEventListener("click", () => this.closePass());
+    document.getElementById("kp-cancel")?.addEventListener("click", () => this.closePass());
+    this.passSaveBtn?.addEventListener("click", () => void this.savePassphrase());
+    this.passClearBtn?.addEventListener("click", () => void this.clearPassphrase());
+
     window.addEventListener("dq:locale", () => {
       this.switchTab(this.tab);
       if (this.tab === "paste") this.previewPasted();
       if (this.tab === "gen" && this.generated) this.renderGenerated(this.generated);
+      if (this.passRoot && !this.passRoot.hidden && this.passKey) this.syncPassLabels();
     });
   }
 
@@ -138,23 +182,56 @@ export class KeyVault {
     return this.ready && !this.root.hidden;
   }
 
-  /** 打开密钥库，等用户选/导入/生成一把密钥。关掉或取消返回 null。 */
-  async choose(tab: Tab = "pick"): Promise<KeyInfo | null> {
-    if (!this.ready) return null;
-    this.selected = null;
-    this.generated = null;
+  /** 口令对话框能不能用（锁按钮只在能用时出现） */
+  get passReady(): boolean {
+    return !!(this.passRoot && this.passInput && this.passSaveBtn && this.passClearBtn);
+  }
+
+  /** 清空三个页的表单，打开前都走一遍 */
+  private resetForms(): void {
     this.textEl.value = "";
     this.pasteNameEl.value = "";
+    if (this.pastePassEl) this.pastePassEl.value = "";
     this.genNameEl.value = "";
     this.parsedEl.hidden = true;
     this.genDone.hidden = true;
     this.genForm.hidden = false;
+  }
+
+  /** 打开密钥库，等用户选/导入/生成一把密钥。关掉或取消返回 null。 */
+  async choose(tab: Tab = "pick"): Promise<KeyInfo | null> {
+    if (!this.ready) return null;
+    this.mode = "choose";
+    this.selected = null;
+    this.generated = null;
+    this.resetForms();
     this.root.hidden = false;
     this.switchTab(tab);
     await this.reload();
     return new Promise((resolve) => {
       this.resolve = resolve;
     });
+  }
+
+  /**
+   * 管理模式：不回传密钥，改完点「完成」收工。
+   * focusPassId 给了就直接弹那把密钥的口令框（抽屉里的「去存口令」用）。
+   */
+  async manage(focusPassId?: string | null): Promise<void> {
+    if (!this.ready) return;
+    // 万一还有一次 choose 在等，先把它安顿掉，不营造两个 resolve
+    if (this.resolve) this.close(null);
+    this.mode = "manage";
+    this.selected = null;
+    this.generated = null;
+    this.resetForms();
+    this.root.hidden = false;
+    this.switchTab("pick");
+    await this.reload();
+    if (focusPassId) {
+      const k = this.keys.find((x) => x.id === focusPassId);
+      if (k) this.openPassDialog(k);
+    }
   }
 
   close(result: KeyInfo | null): void {
@@ -185,11 +262,15 @@ export class KeyVault {
     this.fileBtn.hidden = tab !== "pick";
 
     if (tab === "pick") {
-      this.okBtn.textContent = t("用这把");
-      this.noteEl.textContent = t("AI 能列密钥、能指定用哪把，拿不到私钥内容。");
+      this.okBtn.textContent = t(this.mode === "manage" ? "完成" : "用这把");
+      this.noteEl.textContent = t(
+        this.mode === "manage"
+          ? "改名、删除、复制公钥、存口令，都在这里。"
+          : "AI 能列密钥、能指定用哪把，拿不到私钥内容。"
+      );
       this.renderPick();
     } else if (tab === "paste") {
-      this.okBtn.textContent = t("导入并使用");
+      this.okBtn.textContent = t(this.mode === "manage" ? "导入" : "导入并使用");
       this.noteEl.textContent = t("私钥文本只在导入这一下经过界面，落盘后就只剩元信息。");
     } else {
       this.okBtn.textContent = t(this.generated ? "用这把" : "生成");
@@ -201,7 +282,8 @@ export class KeyVault {
   }
 
   private syncOk(): void {
-    if (this.tab === "pick") this.okBtn.disabled = this.selected === null;
+    if (this.tab === "pick")
+      this.okBtn.disabled = this.mode === "choose" && this.selected === null;
     else if (this.tab === "paste") this.okBtn.disabled = this.textEl.value.trim() === "";
     else this.okBtn.disabled = this.generating;
   }
@@ -284,8 +366,8 @@ export class KeyVault {
     name.appendChild(badge);
     if (k.encrypted) {
       const b = document.createElement("span");
-      b.className = "key-badge warn";
-      b.textContent = t("有口令");
+      b.className = "key-badge " + (k.passphrase_saved ? "ok" : "warn");
+      b.textContent = k.passphrase_saved ? t("已存口令") : t("未存口令");
       name.appendChild(b);
     }
     if (!k.perm_ok) {
@@ -325,11 +407,16 @@ export class KeyVault {
             await invoke("fix_key_permissions", { id: k.id });
             this.toast(t("已把「{name}」权限改成 600", { name: k.name }));
             await this.reload();
+            this.changed();
           } catch (e) {
             this.toast(`${e}`);
           }
         })
       );
+    }
+    // 带口令的密钥：给一个锁按钮，把口令存进钥匙串
+    if (k.encrypted && this.passReady) {
+      acts.appendChild(this.act("lock", t("存口令"), () => this.openPassDialog(k)));
     }
     acts.appendChild(
       this.act("copy", t("复制公钥"), async () => {
@@ -354,6 +441,7 @@ export class KeyVault {
         try {
           await invoke("rename_key_cmd", { id: k.id, name });
           await this.reload();
+          this.changed();
         } catch (e) {
           this.toast(`${e}`);
         }
@@ -378,6 +466,7 @@ export class KeyVault {
           await invoke("remove_key_cmd", { id: k.id });
           if (this.selected === k.id) this.selected = null;
           await this.reload();
+          this.changed();
         } catch (e) {
           this.toast(`${e}`);
         }
@@ -400,6 +489,11 @@ export class KeyVault {
     });
 
     return row;
+  }
+
+  /** 密钥库里的东西变了，叫一声调用方（抽屉里那张卡要跟着新） */
+  private changed(): void {
+    this.onChanged?.();
   }
 
   private act(ic: string, title: string, fn: () => void | Promise<void>): HTMLButtonElement {
@@ -468,7 +562,76 @@ export class KeyVault {
     try {
       const info = await invoke<KeyInfo>("import_key_file", { path: picked });
       this.toast(t("已导入「{name}」", { name: info.name }));
-      this.close(info);
+      if (this.mode === "manage") {
+        await this.reload();
+        this.switchTab("pick");
+        this.changed();
+      } else {
+        this.close(info);
+      }
+    } catch (e) {
+      this.toast(`${e}`);
+    }
+  }
+
+  // ─────────── 口令对话框：存进钥匙串，不回显、不落前端 ───────────
+
+  private syncPassLabels(): void {
+    if (this.passTitleEl) this.passTitleEl.textContent = t("存口令");
+    if (this.passSaveBtn) this.passSaveBtn.textContent = t("保存");
+    if (this.passClearBtn) this.passClearBtn.textContent = t("清除");
+    const cancel = document.getElementById("kp-cancel");
+    if (cancel) cancel.textContent = t("取消");
+  }
+
+  /** 弹出某把密钥的口令框 */
+  openPassDialog(k: KeyInfo): void {
+    if (!this.passReady) return;
+    this.passKey = k;
+    this.syncPassLabels();
+    if (this.passKeyEl) this.passKeyEl.textContent = `${k.name} · ${k.fingerprint}`;
+    this.passInput!.value = "";
+    this.passRoot!.hidden = false;
+    this.passInput!.focus();
+  }
+
+  private closePass(): void {
+    if (!this.passRoot) return;
+    this.passRoot.hidden = true;
+    this.passKey = null;
+  }
+
+  private async savePassphrase(): Promise<void> {
+    const k = this.passKey;
+    if (!k || !this.passInput) return;
+    const val = this.passInput.value;
+    if (!val) {
+      this.toast(t("口令是空的"));
+      return;
+    }
+    try {
+      await invoke("set_key_passphrase", { id: k.id, passphrase: val });
+      this.passInput.value = "";
+      this.closePass();
+      this.toast(t("口令已存进钥匙串"));
+      await this.reload();
+      this.changed();
+    } catch (e) {
+      this.toast(`${e}`);
+    }
+  }
+
+  private async clearPassphrase(): Promise<void> {
+    const k = this.passKey;
+    if (!k) return;
+    if (!window.confirm(t("清掉这把密钥存在钥匙串里的口令？"))) return;
+    try {
+      await invoke("set_key_passphrase", { id: k.id, passphrase: null });
+      if (this.passInput) this.passInput.value = "";
+      this.closePass();
+      this.toast(t("已清除"));
+      await this.reload();
+      this.changed();
     } catch (e) {
       this.toast(`${e}`);
     }
@@ -476,6 +639,11 @@ export class KeyVault {
 
   private async confirm(): Promise<void> {
     if (this.tab === "pick") {
+      // 管理模式的「完成」：不选任何密钥，直接收工
+      if (this.mode === "manage") {
+        this.close(null);
+        return;
+      }
       const k = this.keys.find((x) => x.id === this.selected);
       if (k) this.close(k);
       return;
@@ -485,21 +653,34 @@ export class KeyVault {
       const text = this.textEl.value.trim();
       if (!text) return;
       const name = this.pasteNameEl.value.trim();
+      const pass = this.pastePassEl?.value ?? "";
       try {
         const info = await invoke<KeyInfo>("import_key_text", {
           text,
           name: name || null,
+          passphrase: pass || null,
         });
         this.textEl.value = "";
+        if (this.pastePassEl) this.pastePassEl.value = "";
         this.toast(t("已导入「{name}」 {algo}", { name: info.name, algo: info.algo }));
-        this.close(info);
+        if (this.mode === "manage") {
+          // 管理模式：不关弹层，切回列表接着管
+          this.pasteNameEl.value = "";
+          this.parsedEl.hidden = true;
+          await this.reload();
+          this.switchTab("pick");
+          this.changed();
+        } else {
+          this.close(info);
+        }
       } catch (e) {
         this.toast(`${e}`);
       }
       return;
     }
 
-    // 新建：第一下生成，生成完按钮变成「用这把」
+    // 新建：choose 模式第一下生成，生成完按钮变成「用这把」；
+    // manage 模式生成完切回列表继续管
     if (this.generated) {
       this.close(this.generated);
       return;
@@ -515,12 +696,22 @@ export class KeyVault {
         algo,
         comment: "daiqiao",
       });
-      this.generated = info;
-      this.renderGenerated(info);
-      this.genDone.hidden = false;
-      this.genForm.hidden = true;
-      this.okBtn.textContent = t("用这把");
-      this.noteEl.textContent = t("私钥已存进代敲库，权限 600。");
+      if (this.mode === "manage") {
+        this.toast(
+          t("已生成 {algo} · {fingerprint}", { algo: info.algo, fingerprint: info.fingerprint })
+        );
+        this.genNameEl.value = "";
+        await this.reload();
+        this.switchTab("pick");
+        this.changed();
+      } else {
+        this.generated = info;
+        this.renderGenerated(info);
+        this.genDone.hidden = false;
+        this.genForm.hidden = true;
+        this.okBtn.textContent = t("用这把");
+        this.noteEl.textContent = t("私钥已存进代敲库，权限 600。");
+      }
     } catch (e) {
       this.toast(`${e}`);
     } finally {

@@ -769,7 +769,9 @@ pub fn import_config(path: String, passphrase: Option<String>) -> Result<String,
         if by_fingerprint.contains_key(&metadata.fingerprint) {
             continue;
         }
-        match crate::keys::import_text(text, None) {
+        // 配置迁移没法当场向人要口令，走 raw 导入（和 import_file 同语义）：
+        // 带口令的私钥也能迁进来，连之前去密钥库存口令
+        match crate::keys::import_text_raw(text, None) {
             Ok(info) => {
                 if info.fingerprint != metadata.fingerprint {
                     let _ = std::fs::remove_file(&info.path);
